@@ -1,28 +1,31 @@
-// ============================================================
-// APP.JS - Contagem BL_MEZ - Versão Final Corrigida
-// ============================================================
-
 (function() {
     'use strict';
     
-    // ============ VERIFICAÇÃO DE ACESSO ============
     const currentUser = Auth.checkAccess();
     if (!currentUser) return;
-    
     const isMaster = Auth.isMaster();
     
-    // ============ ATALHOS DOM ============
     const $ = (s) => document.querySelector(s);
     const $$ = (s) => document.querySelectorAll(s);
     
-    // Elementos da UI
+    // Elementos do menu/sidebar
+    const hamburgerBtn = $('#hamburgerBtn');
+    const sidebar = $('#sidebar');
+    const sidebarOverlay = $('#sidebarOverlay');
+    const sidebarClose = $('#sidebarClose');
+    const menuBase = $('#menuBase');
+    const menuHistorico = $('#menuHistorico');
+    
+    // Elementos das seções
+    const secaoContagem = $('#secaoContagem');
+    const secaoBase = $('#secaoBase');
+    const secaoHistorico = $('#secaoHistorico');
+    const secaoDashboard = $('#secaoDashboard');
+    
+    // Elementos de UI
     const userNameDisplay = $('#userNameDisplay');
     const masterBadge = $('#masterBadge');
     const connectionDot = $('#connectionDot');
-    const hamburgerBtn = $('#hamburgerBtn');
-    const menuDropdown = $('#menuDropdown');
-    const tabBaseBtn = $('#tabBaseBtn');
-    const tabHistoricoBtn = $('#tabHistoricoBtn');
     const importInfo = $('#importInfo');
     const inputRua = $('#rua');
     const inputFaixa = $('#faixa');
@@ -40,6 +43,8 @@
     const statUltima = $('#statUltima');
     const tabelaHistorico = $('#tabelaHistorico');
     const nenhumRegistro = $('#nenhumRegistro');
+    const tabelaDashboard = $('#tabelaDashboard');
+    const nenhumDashboard = $('#nenhumDashboard');
     const filtroRua = $('#filtroRua');
     const filtroFaixa = $('#filtroFaixa');
     const filtroCodigo = $('#filtroCodigo');
@@ -62,7 +67,6 @@
     const btnExportCSV = $('#btnExportCSV');
     const btnExportExcel = $('#btnExportExcel');
     
-    // ============ ESTADO DA APLICAÇÃO ============
     const state = {
         produtosMapCodAcesso: new Map(),
         produtosMapSeqProduto: new Map(),
@@ -77,274 +81,202 @@
     
     // ============ INICIALIZAÇÃO ============
     async function init() {
-        console.log('🚀 Iniciando Contagem BL_MEZ...');
-        console.log('👤 Usuário:', currentUser.nome, '| Master:', isMaster);
-        
-        // Exibir informações do usuário
+        console.log('🚀 Iniciando...');
         if (userNameDisplay) userNameDisplay.textContent = '👤 ' + currentUser.nome;
         
-        // Badge de master
         if (isMaster) {
             if (masterBadge) masterBadge.style.display = 'inline';
-            if (tabBaseBtn) tabBaseBtn.style.display = 'inline-block';
-            if (tabHistoricoBtn) tabHistoricoBtn.style.display = 'inline-block';
+            if (menuBase) menuBase.style.display = 'block';
+            if (menuHistorico) menuHistorico.style.display = 'block';
         }
         
-        // Inicializar Supabase
-        console.log('🔌 Inicializando Supabase...');
         const dbOk = Database.init();
         state.dbConnected = dbOk;
-        updateConnectionIndicator();
+        updateConnectionDot();
         
-        // Testar conexão e carregar produtos
         if (dbOk) {
             const testOk = await Database.testConnection();
             state.dbConnected = testOk;
-            updateConnectionIndicator();
-            
+            updateConnectionDot();
             if (testOk) {
-                console.log('✅ Conexão OK! Carregando produtos...');
                 await carregarBaseDoSupabase();
             } else {
-                console.error('❌ Falha no teste de conexão');
-                if (importInfo) importInfo.innerHTML = '<span style="color:var(--red);">❌ Erro na conexão com Supabase</span>';
+                if (importInfo) importInfo.innerHTML = '<span style="color:var(--red);">❌ Erro na conexão</span>';
             }
-        } else {
-            console.error('❌ Supabase não inicializado');
-            if (importInfo) importInfo.innerHTML = '<span style="color:var(--red);">❌ Supabase não conectado</span>';
         }
         
-        // Carregar contagens do localStorage
         loadContagens();
-        
-        // Metadados
         const meta = Database.loadBaseMeta();
-        if (meta && !state.baseMeta) {
-            state.baseMeta = meta;
-        }
+        if (meta && !state.baseMeta) state.baseMeta = meta;
         
-        // Renderizar
         atualizarInfoImportacao();
         renderizarHistorico();
+        renderizarDashboard();
         atualizarEstatisticas();
         atualizarBaseInfo();
         
-        // Sincronizar pendentes
-        if (state.dbConnected && navigator.onLine) {
-            await syncPendingContagens();
-        }
+        if (state.dbConnected && navigator.onLine) await syncPendingContagens();
         
-        // Dark mode
         if (localStorage.getItem('blmez_darkmode') === '1') {
             document.body.classList.add('dark-mode');
             const darkBtn = $('#menuDarkMode');
             if (darkBtn) darkBtn.textContent = '☀️ Modo Claro';
         }
         
-        // Foco inicial
-        if (inputRua) inputRua.focus();
-        
-        console.log('✅ Aplicação pronta!');
-        console.log('   Supabase:', state.dbConnected ? 'Conectado' : 'Offline');
-        console.log('   Produtos:', state.produtosMapCodAcesso.size);
-        console.log('   Contagens:', state.contagensLocal.length);
+        setupEventListeners();
+        abrirSecao('contagem'); // padrão
+        console.log('✅ Pronto!');
     }
     
-    function updateConnectionIndicator() {
+    function updateConnectionDot() {
         if (connectionDot) {
             connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
-            connectionDot.title = state.dbConnected ? 'Supabase Online' : 'Supabase Offline';
         }
+    }
+    
+    // ============ SIDEBAR ============
+    function abrirSidebar() {
+        sidebar.classList.add('open');
+        sidebarOverlay.classList.add('open');
+    }
+    
+    function fecharSidebar() {
+        sidebar.classList.remove('open');
+        sidebarOverlay.classList.remove('open');
+    }
+    
+    function abrirSecao(nome) {
+        // Esconde todas
+        [secaoContagem, secaoBase, secaoHistorico, secaoDashboard].forEach(s => {
+            if (s) s.classList.remove('active');
+        });
+        // Mostra a escolhida
+        const mapa = {
+            contagem: secaoContagem,
+            base: secaoBase,
+            historico: secaoHistorico,
+            dashboard: secaoDashboard
+        };
+        const secao = mapa[nome];
+        if (secao) secao.classList.add('active');
+        
+        // Atualiza item ativo no sidebar
+        $$('.sidebar-item[data-section]').forEach(item => {
+            item.classList.remove('active');
+            if (item.dataset.section === nome) item.classList.add('active');
+        });
+        
+        // Ações específicas
+        if (nome === 'historico') renderizarHistorico();
+        if (nome === 'dashboard') renderizarDashboard();
+        if (nome === 'base') atualizarBaseInfo();
+        
+        fecharSidebar();
     }
     
     // ============ BASE DE PRODUTOS ============
     async function carregarBaseDoSupabase() {
-        if (!Database.supabase) {
-            console.error('❌ carregarBase: supabase é null');
-            return;
-        }
-        
+        if (!Database.supabase) return;
         try {
-            console.log('🔄 Buscando produtos do Supabase...');
             const produtos = await Database.fetchProdutos();
-            
             if (produtos && produtos.length > 0) {
                 construirIndices(produtos);
-                
                 state.baseMeta = {
                     nomeArquivo: 'Supabase',
                     totalRegistros: produtos.length,
                     dataHoraImportacao: new Date().toISOString()
                 };
-                
                 Database.saveBaseMeta(state.baseMeta);
                 atualizarInfoImportacao();
                 atualizarBaseInfo();
-                
-                console.log('✅ ' + produtos.length + ' produtos carregados na memória');
                 Utils.showToast('✅ ' + produtos.length + ' produtos carregados', 'success');
             } else {
-                console.log('⚠️ Nenhum produto encontrado no Supabase');
-                if (importInfo) importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Base vazia. Importe um arquivo TXT na aba Gerenciar Base.</span>';
-                Utils.showToast('⚠️ Base vazia - Importe um TXT', 'warning');
+                if (importInfo) importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Base vazia</span>';
             }
         } catch (err) {
-            console.error('❌ Erro ao carregar base:', err.message);
-            if (importInfo) importInfo.innerHTML = '<span style="color:var(--red);">❌ Erro: ' + Utils.escapeHTML(err.message) + '</span>';
-            Utils.showToast('❌ Erro: ' + err.message, 'error');
+            if (importInfo) importInfo.innerHTML = '<span style="color:var(--red);">❌ ' + Utils.escapeHTML(err.message) + '</span>';
         }
     }
     
     function construirIndices(produtos) {
         state.produtosMapCodAcesso.clear();
         state.produtosMapSeqProduto.clear();
-        
         for (const p of produtos) {
-            const embFormatada = p.embalagem && p.qtdembalagem 
-                ? p.embalagem + ' x ' + p.qtdembalagem 
-                : (p.embalagem || p.qtdembalagem || '');
-            
-            const produto = {
+            const emb = p.embalagem && p.qtdembalagem ? `${p.embalagem} x ${p.qtdembalagem}` : (p.embalagem || p.qtdembalagem || '');
+            const prod = {
                 seqProduto: p.seqproduto || '',
                 descCompleta: p.desccompleta || '',
                 codAcesso: p.codacesso || '',
                 embalagem: p.embalagem || '',
                 qtdEmbalagem: p.qtdembalagem || '',
-                embalagemFormatada: embFormatada
+                embalagemFormatada: emb
             };
-            
-            if (produto.codAcesso) state.produtosMapCodAcesso.set(produto.codAcesso, produto);
-            if (produto.seqProduto) state.produtosMapSeqProduto.set(produto.seqProduto, produto);
+            if (prod.codAcesso) state.produtosMapCodAcesso.set(prod.codAcesso, prod);
+            if (prod.seqProduto) state.produtosMapSeqProduto.set(prod.seqProduto, prod);
         }
-        
-        console.log('📊 Índices construídos: ' + state.produtosMapCodAcesso.size + ' produtos');
     }
     
     async function importarBaseMaster(conteudo, nomeArquivo) {
-        if (!Database.supabase) {
-            Utils.showToast('❌ Supabase não conectado!', 'error');
-            return;
-        }
-        
-        if (progressBarMaster) progressBarMaster.classList.add('active');
-        if (progressFillMaster) progressFillMaster.style.width = '0%';
-        if (importStatusMaster) importStatusMaster.textContent = 'Processando arquivo...';
-        
+        if (!Database.supabase) return;
+        progressBarMaster.classList.add('active');
         try {
-            const linhas = conteudo.split(/\r?\n/).filter(l => l.trim() !== '');
-            if (linhas.length === 0) throw new Error('Arquivo vazio.');
-            
-            // Detectar delimitador
+            const linhas = conteudo.split(/\r?\n/).filter(l => l.trim());
+            if (!linhas.length) throw new Error('Vazio');
             const delimitadores = ['\t', ';', ','];
-            let delimitador = '\t';
-            let maxCols = 0;
-            for (const d of delimitadores) {
-                const cols = linhas[0].split(d).length;
-                if (cols > maxCols) { maxCols = cols; delimitador = d; }
-            }
-            
-            const primeiraCols = linhas[0].split(delimitador);
-            const pareceCabecalho = primeiraCols.some(c => /seqproduto|codacesso/i.test(c.trim()));
-            const inicioDados = pareceCabecalho ? 1 : 0;
-            
-            if (primeiraCols.length < 9) throw new Error('Arquivo precisa ter pelo menos 9 colunas.');
-            
-            const produtosParaSupabase = [];
-            
-            for (let i = inicioDados; i < linhas.length; i++) {
-                const cols = linhas[i].split(delimitador);
+            let del = '\t', max = 0;
+            delimitadores.forEach(d => { const c = linhas[0].split(d).length; if (c > max) { max = c; del = d; } });
+            const cab = linhas[0].split(del);
+            const inicio = cab.some(c => /seqproduto|codacesso/i.test(c)) ? 1 : 0;
+            if (cab.length < 9) throw new Error('9 colunas necessárias');
+            const arr = [];
+            for (let i = inicio; i < linhas.length; i++) {
+                const cols = linhas[i].split(del);
                 if (cols.length < 9) continue;
-                
-                produtosParaSupabase.push({
-                    seqproduto: (cols[1] || '').trim(),
-                    desccompleta: (cols[2] || '').trim(),
-                    codacesso: (cols[3] || '').trim(),
-                    embalagem: (cols[7] || '').trim(),
-                    qtdembalagem: (cols[8] || '').trim()
+                arr.push({
+                    seqproduto: (cols[1]||'').trim(),
+                    desccompleta: (cols[2]||'').trim(),
+                    codacesso: (cols[3]||'').trim(),
+                    embalagem: (cols[7]||'').trim(),
+                    qtdembalagem: (cols[8]||'').trim()
                 });
             }
-            
-            if (importStatusMaster) importStatusMaster.textContent = 'Enviando ' + produtosParaSupabase.length + ' produtos...';
-            
-            await Database.replaceProdutos(produtosParaSupabase, (progresso) => {
-                if (progressFillMaster) progressFillMaster.style.width = progresso + '%';
-                if (importStatusMaster) importStatusMaster.textContent = 'Enviando... ' + progresso + '%';
-            });
-            
-            // Reconstruir índices em memória
-            construirIndices(produtosParaSupabase.map(p => ({
-                seqproduto: p.seqproduto,
-                desccompleta: p.desccompleta,
-                codacesso: p.codacesso,
-                embalagem: p.embalagem,
-                qtdembalagem: p.qtdembalagem
-            })));
-            
-            state.baseMeta = {
-                nomeArquivo,
-                totalRegistros: state.produtosMapCodAcesso.size,
-                dataHoraImportacao: new Date().toISOString()
-            };
-            
+            await Database.replaceProdutos(arr, p => { progressFillMaster.style.width = p+'%'; });
+            construirIndices(arr.map(p => ({ seqproduto: p.seqproduto, desccompleta: p.desccompleta, codacesso: p.codacesso, embalagem: p.embalagem, qtdembalagem: p.qtdembalagem })));
+            state.baseMeta = { nomeArquivo, totalRegistros: state.produtosMapCodAcesso.size, dataHoraImportacao: new Date().toISOString() };
             Database.saveBaseMeta(state.baseMeta);
             atualizarInfoImportacao();
             atualizarBaseInfo();
-            
-            if (importStatusMaster) importStatusMaster.innerHTML = '<span style="color:var(--green);">✅ ' + state.produtosMapCodAcesso.size + ' produtos importados!</span>';
-            Utils.showToast('✅ ' + state.produtosMapCodAcesso.size + ' produtos importados!', 'success');
-            
-        } catch (err) {
-            console.error('❌ Erro ao importar:', err);
-            if (importStatusMaster) importStatusMaster.innerHTML = '<span style="color:var(--red);">❌ ' + Utils.escapeHTML(err.message) + '</span>';
-            Utils.showToast('❌ ' + err.message, 'error');
+            importStatusMaster.innerHTML = '<span style="color:green">✅ '+state.produtosMapCodAcesso.size+' produtos</span>';
+        } catch (e) {
+            importStatusMaster.innerHTML = '<span style="color:red">❌ '+Utils.escapeHTML(e.message)+'</span>';
         } finally {
-            if (progressBarMaster) progressBarMaster.classList.remove('active');
-            if (progressFillMaster) progressFillMaster.style.width = '0%';
+            progressBarMaster.classList.remove('active');
         }
     }
     
     function atualizarInfoImportacao() {
         if (!importInfo) return;
-        
         if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) {
-            importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada.</span>';
+            importInfo.innerHTML = '<span style="color:orange">⚠️ Nenhuma base</span>';
             return;
         }
-        
-        const dh = state.baseMeta.dataHoraImportacao 
-            ? Utils.formatDataHora(state.baseMeta.dataHoraImportacao) 
-            : { data: '--', hora: '--' };
-        
-        importInfo.innerHTML = 
-            '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span>' +
-            '<span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span>' +
-            '<span>📅 ' + dh.data + ' ' + dh.hora + '</span>' +
-            '<span class="badge">☁️ Supabase</span>';
+        const dh = Utils.formatDataHora(state.baseMeta.dataHoraImportacao);
+        importInfo.innerHTML = `<span class="badge">📄 ${Utils.escapeHTML(state.baseMeta.nomeArquivo)}</span>
+            <span class="badge">📊 ${state.produtosMapCodAcesso.size.toLocaleString('pt-BR')} registros</span>
+            <span>📅 ${dh.data} ${dh.hora}</span> <span class="badge">☁️ Supabase</span>`;
     }
     
     function atualizarBaseInfo() {
-        if (baseInfo) {
-            baseInfo.textContent = state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' produtos na base';
-        }
+        if (baseInfo) baseInfo.textContent = `${state.produtosMapCodAcesso.size.toLocaleString('pt-BR')} produtos`;
     }
     
-    // ============ PESQUISA DE PRODUTOS ============
+    // ============ PESQUISA ============
     function pesquisarProduto(codigo) {
-        if (!codigo || !codigo.trim()) return null;
-        const cod = codigo.trim();
-        
-        // Busca exata
-        if (state.produtosMapCodAcesso.has(cod)) return state.produtosMapCodAcesso.get(cod);
-        if (state.produtosMapSeqProduto.has(cod)) return state.produtosMapSeqProduto.get(cod);
-        
-        // Busca parcial (começa com)
-        for (const [key, val] of state.produtosMapCodAcesso) {
-            if (key.startsWith(cod)) return val;
-        }
-        for (const [key, val] of state.produtosMapSeqProduto) {
-            if (key.startsWith(cod)) return val;
-        }
-        
+        if (!codigo?.trim()) return null;
+        const c = codigo.trim();
+        if (state.produtosMapCodAcesso.has(c)) return state.produtosMapCodAcesso.get(c);
+        if (state.produtosMapSeqProduto.has(c)) return state.produtosMapSeqProduto.get(c);
+        for (const [k,v] of state.produtosMapCodAcesso) if (k.startsWith(c)) return v;
         return null;
     }
     
@@ -353,10 +285,7 @@
         try {
             state.contagensLocal = JSON.parse(localStorage.getItem(Database.KEYS.CONTAGENS) || '[]');
             state.pendingContagens = JSON.parse(localStorage.getItem(Database.KEYS.PENDING) || '[]');
-        } catch (e) {
-            state.contagensLocal = [];
-            state.pendingContagens = [];
-        }
+        } catch (e) { state.contagensLocal = []; state.pendingContagens = []; }
     }
     
     function saveContagens() {
@@ -367,743 +296,317 @@
     }
     
     async function salvarContagem(contagem) {
-        const existente = state.contagensLocal.findIndex(c =>
-            c.rua === contagem.rua && c.faixa === contagem.faixa && c.codigo === contagem.codigo
-        );
-        
-        if (existente >= 0) {
-            return new Promise((resolve) => {
-                state.resolvendoDuplicidade = (opcao) => {
-                    state.resolvendoDuplicidade = null;
-                    
-                    if (opcao === 'editar') {
-                        state.contagensLocal[existente] = { 
-                            ...contagem, 
-                            synced: false, 
-                            localId: state.contagensLocal[existente].localId 
-                        };
-                    } else if (opcao === 'somar') {
-                        state.contagensLocal[existente].quantidade += contagem.quantidade;
-                        state.contagensLocal[existente].observacoes = contagem.observacoes || state.contagensLocal[existente].observacoes || '';
-                        state.contagensLocal[existente].synced = false;
-                    }
-                    
-                    saveContagens();
-                    renderizarHistorico();
-                    atualizarEstatisticas();
-                    resolve(opcao);
+        const idx = state.contagensLocal.findIndex(c => c.rua === contagem.rua && c.faixa === contagem.faixa && c.codigo === contagem.codigo);
+        if (idx >= 0) {
+            return new Promise(resolve => {
+                state.resolvendoDuplicidade = (op) => {
+                    if (op === 'editar') state.contagensLocal[idx] = { ...contagem, synced: false, localId: state.contagensLocal[idx].localId };
+                    else if (op === 'somar') { state.contagensLocal[idx].quantidade += contagem.quantidade; state.contagensLocal[idx].synced = false; }
+                    saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+                    resolve(op);
                 };
-                
-                const exist = state.contagensLocal[existente];
-                if (msgDuplicidade) {
-                    msgDuplicidade.innerHTML = 
-                        '<strong>' + Utils.escapeHTML(exist.rua) + '</strong> / Faixa ' + exist.faixa + '<br>' +
-                        'Qtd atual: ' + exist.quantidade + ' | Nova: ' + contagem.quantidade;
-                }
-                if (modalDuplicidade) modalDuplicidade.style.display = 'flex';
+                msgDuplicidade.innerHTML = `<strong>${state.contagensLocal[idx].rua}</strong> / Faixa ${state.contagensLocal[idx].faixa}<br>Qtd atual: ${state.contagensLocal[idx].quantidade} | Nova: ${contagem.quantidade}`;
+                modalDuplicidade.style.display = 'flex';
             });
         }
-        
         state.contagensLocal.push(contagem);
         state.pendingContagens.push(contagem);
         saveContagens();
-        
-        if (Database.supabase && navigator.onLine) {
-            await syncPendingContagens();
-        }
-        
+        if (Database.supabase && navigator.onLine) await syncPendingContagens();
         return 'novo';
     }
     
     async function syncPendingContagens() {
-        if (!Database.supabase || state.pendingContagens.length === 0) return;
-        
-        let count = 0;
-        for (const cont of [...state.pendingContagens]) {
+        if (!Database.supabase || !state.pendingContagens.length) return;
+        for (const c of [...state.pendingContagens]) {
             try {
-                const result = await Database.saveContagem({
-                    rua: cont.rua,
-                    faixa: cont.faixa,
-                    codigo: cont.codigo,
-                    descricao: cont.descricao,
-                    embalagem: cont.embalagem,
-                    quantidade: cont.quantidade,
-                    observacoes: cont.observacoes || '',
-                    data: cont.data,
-                    hora: cont.hora
-                });
-                
-                cont.synced = true;
-                cont.supabase_id = result.id;
-                state.pendingContagens = state.pendingContagens.filter(c => c.localId !== cont.localId);
-                count++;
-            } catch (err) {
-                console.error('Erro ao sincronizar contagem:', err);
-            }
+                const res = await Database.saveContagem({ rua: c.rua, faixa: c.faixa, codigo: c.codigo, descricao: c.descricao, embalagem: c.embalagem, quantidade: c.quantidade, observacoes: c.observacoes||'', data: c.data, hora: c.hora });
+                c.synced = true; c.supabase_id = res.id;
+                state.pendingContagens = state.pendingContagens.filter(x => x.localId !== c.localId);
+            } catch (e) {}
         }
-        
-        if (count > 0) {
-            saveContagens();
-            renderizarHistorico();
-            atualizarEstatisticas();
-            Utils.showToast('✅ ' + count + ' contagens sincronizadas!', 'success');
-        }
+        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
     }
     
     // ============ RENDERIZAÇÃO ============
     function getHistoricoFiltrado() {
         let lista = [...state.contagensLocal];
-        
-        if (filtroRua && filtroRua.value.trim()) {
-            const f = filtroRua.value.toLowerCase().trim();
-            lista = lista.filter(c => c.rua.toLowerCase().includes(f));
-        }
-        if (filtroFaixa && filtroFaixa.value.trim()) {
-            const f = filtroFaixa.value.toLowerCase().trim();
-            lista = lista.filter(c => String(c.faixa).includes(f));
-        }
-        if (filtroCodigo && filtroCodigo.value.trim()) {
-            const f = filtroCodigo.value.toLowerCase().trim();
-            lista = lista.filter(c => c.codigo.toLowerCase().includes(f));
-        }
-        if (filtroDescricao && filtroDescricao.value.trim()) {
-            const f = filtroDescricao.value.toLowerCase().trim();
-            lista = lista.filter(c => c.descricao.toLowerCase().includes(f));
-        }
-        
+        if (filtroRua?.value.trim()) lista = lista.filter(c => c.rua.toLowerCase().includes(filtroRua.value.toLowerCase().trim()));
+        if (filtroFaixa?.value.trim()) lista = lista.filter(c => String(c.faixa).includes(filtroFaixa.value.trim()));
+        if (filtroCodigo?.value.trim()) lista = lista.filter(c => c.codigo.toLowerCase().includes(filtroCodigo.value.toLowerCase().trim()));
+        if (filtroDescricao?.value.trim()) lista = lista.filter(c => c.descricao.toLowerCase().includes(filtroDescricao.value.toLowerCase().trim()));
         if (state.sortColumn) {
-            lista.sort((a, b) => {
-                let va = a[state.sortColumn];
-                let vb = b[state.sortColumn];
+            lista.sort((a,b) => {
+                let va = a[state.sortColumn], vb = b[state.sortColumn];
                 if (typeof va === 'string') va = va.toLowerCase();
                 if (typeof vb === 'string') vb = vb.toLowerCase();
-                return state.sortDirection === 'asc' ? (va < vb ? -1 : 1) : (va > vb ? -1 : 1);
+                return state.sortDirection === 'asc' ? (va<vb?-1:1) : (va>vb?-1:1);
             });
         } else {
-            lista.sort((a, b) => new Date(b.dataISO || 0) - new Date(a.dataISO || 0));
+            lista.sort((a,b) => new Date(b.dataISO||0) - new Date(a.dataISO||0));
         }
-        
         return lista;
     }
     
     function renderizarHistorico() {
         if (!tabelaHistorico) return;
-        
         const lista = getHistoricoFiltrado();
         tabelaHistorico.innerHTML = '';
-        
-        if (lista.length === 0) {
+        if (!lista.length) {
             if (nenhumRegistro) nenhumRegistro.style.display = 'block';
         } else {
             if (nenhumRegistro) nenhumRegistro.style.display = 'none';
-            
             lista.forEach(c => {
-                const syncedIcon = c.synced ? '☁️' : '📱';
                 const tr = document.createElement('tr');
-                tr.innerHTML = 
-                    '<td>' + Utils.escapeHTML(c.rua) + '</td>' +
-                    '<td>' + c.faixa + '</td>' +
-                    '<td>' + Utils.escapeHTML(c.codigo) + ' ' + syncedIcon + '</td>' +
-                    '<td>' + Utils.escapeHTML(c.descricao) + '</td>' +
-                    '<td>' + Utils.escapeHTML(c.embalagem) + '</td>' +
-                    '<td><strong>' + c.quantidade + '</strong></td>' +
-                    '<td>' + (c.data || '--') + '</td>' +
-                    '<td>' + (c.hora || '--') + '</td>' +
-                    '<td>' +
-                        '<button class="btn btn-outline btn-sm btn-editar" data-id="' + c.localId + '">✏️</button> ' +
-                        '<button class="btn btn-danger-text btn-sm btn-excluir" data-id="' + c.localId + '">🗑️</button>' +
-                    '</td>';
+                tr.innerHTML = `<td>${Utils.escapeHTML(c.rua)}</td><td>${c.faixa}</td><td>${Utils.escapeHTML(c.codigo)} ${c.synced?'☁️':'📱'}</td><td>${Utils.escapeHTML(c.descricao)}</td><td>${Utils.escapeHTML(c.embalagem)}</td><td><strong>${c.quantidade}</strong></td><td>${c.data||'--'}</td><td>${c.hora||'--'}</td><td><button class="btn btn-outline btn-sm btn-editar" data-id="${c.localId}">✏️</button> <button class="btn btn-danger-text btn-sm btn-excluir" data-id="${c.localId}">🗑️</button></td>`;
                 tabelaHistorico.appendChild(tr);
             });
-            
-            // Eventos dos botões
-            tabelaHistorico.querySelectorAll('.btn-editar').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const idx = state.contagensLocal.findIndex(c => c.localId === this.dataset.id);
-                    if (idx >= 0) editarContagem(idx);
-                });
-            });
-            
-            tabelaHistorico.querySelectorAll('.btn-excluir').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const idx = state.contagensLocal.findIndex(c => c.localId === this.dataset.id);
-                    if (idx >= 0) excluirContagem(idx);
-                });
+            tabelaHistorico.querySelectorAll('.btn-editar').forEach(b => b.addEventListener('click', function() {
+                const i = state.contagensLocal.findIndex(c => c.localId === this.dataset.id);
+                if (i>=0) editarContagem(i);
+            }));
+            tabelaHistorico.querySelectorAll('.btn-excluir').forEach(b => b.addEventListener('click', function() {
+                const i = state.contagensLocal.findIndex(c => c.localId === this.dataset.id);
+                if (i>=0) excluirContagem(i);
+            }));
+        }
+    }
+    
+    function renderizarDashboard() {
+        if (!tabelaDashboard) return;
+        const ruas = {};
+        state.contagensLocal.forEach(c => {
+            if (!ruas[c.rua]) ruas[c.rua] = { itens: 0, paletes: 0, ultima: '' };
+            ruas[c.rua].itens++;
+            ruas[c.rua].paletes += c.quantidade;
+            if (!ruas[c.rua].ultima || new Date(c.dataISO) > new Date(ruas[c.rua].ultima)) ruas[c.rua].ultima = c.dataISO;
+        });
+        tabelaDashboard.innerHTML = '';
+        const entradas = Object.entries(ruas);
+        if (!entradas.length) {
+            if (nenhumDashboard) nenhumDashboard.style.display = 'block';
+        } else {
+            if (nenhumDashboard) nenhumDashboard.style.display = 'none';
+            entradas.forEach(([rua, dados]) => {
+                const dh = dados.ultima ? Utils.formatDataHora(dados.ultima) : { data: '--', hora: '--' };
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td><strong>${Utils.escapeHTML(rua)}</strong></td><td>${dados.itens}</td><td>${dados.paletes}</td><td>${dh.data} ${dh.hora}</td>`;
+                tabelaDashboard.appendChild(tr);
             });
         }
-        
-        // Ícones de ordenação
-        $$('thead th[data-sort]').forEach(th => {
-            const icon = th.querySelector('.sort-icon');
-            if (icon) {
-                icon.textContent = th.dataset.sort === state.sortColumn 
-                    ? (state.sortDirection === 'asc' ? '▲' : '▼') 
-                    : '';
-            }
-        });
     }
     
     function editarContagem(index) {
         const c = state.contagensLocal[index];
-        if (inputRua) inputRua.value = c.rua;
-        if (inputFaixa) inputFaixa.value = c.faixa;
-        if (inputCodigo) inputCodigo.value = c.codigo;
-        if (inputDescricao) inputDescricao.value = c.descricao;
-        if (inputEmbalagem) inputEmbalagem.value = c.embalagem;
-        if (inputQuantidade) inputQuantidade.value = c.quantidade;
-        if (inputObservacoes) inputObservacoes.value = c.observacoes || '';
-        
-        state.contagensLocal.splice(index, 1);
+        inputRua.value = c.rua; inputFaixa.value = c.faixa; inputCodigo.value = c.codigo;
+        inputDescricao.value = c.descricao; inputEmbalagem.value = c.embalagem;
+        inputQuantidade.value = c.quantidade; inputObservacoes.value = c.observacoes || '';
+        state.contagensLocal.splice(index,1);
         state.pendingContagens = state.pendingContagens.filter(p => p.localId !== c.localId);
-        saveContagens();
-        renderizarHistorico();
-        atualizarEstatisticas();
-        
-        // Mudar para aba de contagem
-        const tabContagemBtn = document.querySelector('[data-tab="contagem"]');
-        if (tabContagemBtn) tabContagemBtn.click();
-        
-        Utils.showToast('Contagem carregada para edição.', 'success');
+        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+        abrirSecao('contagem');
+        Utils.showToast('Editando...', 'success');
     }
     
     async function excluirContagem(index) {
-        if (!confirm('Deseja realmente excluir esta contagem?')) return;
-        
+        if (!confirm('Excluir?')) return;
         const c = state.contagensLocal[index];
-        
-        if (c.supabase_id && Database.supabase) {
-            try {
-                await Database.deleteContagem(c.supabase_id);
-            } catch (err) {
-                console.error('Erro ao excluir do Supabase:', err);
-            }
-        }
-        
-        state.contagensLocal.splice(index, 1);
+        if (c.supabase_id && Database.supabase) await Database.deleteContagem(c.supabase_id);
+        state.contagensLocal.splice(index,1);
         state.pendingContagens = state.pendingContagens.filter(p => p.localId !== c.localId);
-        saveContagens();
-        renderizarHistorico();
-        atualizarEstatisticas();
-        Utils.showToast('Contagem excluída.', 'success');
+        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
     }
     
     function atualizarEstatisticas() {
         if (statItens) statItens.textContent = state.contagensLocal.length.toLocaleString('pt-BR');
-        if (statPaletes) statPaletes.textContent = state.contagensLocal.reduce((s, c) => s + (c.quantidade || 0), 0).toLocaleString('pt-BR');
+        if (statPaletes) statPaletes.textContent = state.contagensLocal.reduce((s,c) => s + (c.quantidade||0), 0).toLocaleString('pt-BR');
         if (statProdutos) statProdutos.textContent = new Set(state.contagensLocal.map(c => c.codigo)).size.toLocaleString('pt-BR');
-        if (statUltima && state.contagensLocal.length > 0) {
-            const u = state.contagensLocal[state.contagensLocal.length - 1];
-            statUltima.textContent = (u.data || '--') + ' ' + (u.hora || '--');
+        if (statUltima && state.contagensLocal.length) {
+            const u = state.contagensLocal[state.contagensLocal.length-1];
+            statUltima.textContent = `${u.data||'--'} ${u.hora||'--'}`;
         }
     }
     
     // ============ EVENTOS ============
-    
-    // Menu hamburguer
-    if (hamburgerBtn) {
-        hamburgerBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (menuDropdown) menuDropdown.classList.toggle('show');
+    function setupEventListeners() {
+        // Sidebar
+        hamburgerBtn.addEventListener('click', abrirSidebar);
+        sidebarClose.addEventListener('click', fecharSidebar);
+        sidebarOverlay.addEventListener('click', fecharSidebar);
+        $$('.sidebar-item[data-section]').forEach(item => {
+            item.addEventListener('click', () => abrirSecao(item.dataset.section));
         });
-    }
-    
-    document.addEventListener('click', () => {
-        if (menuDropdown) menuDropdown.classList.remove('show');
-    });
-    
-    if (menuDropdown) {
-        menuDropdown.addEventListener('click', (e) => e.stopPropagation());
-    }
-    
-    // Menu: Modo Escuro
-    const menuDarkMode = $('#menuDarkMode');
-    if (menuDarkMode) {
-        menuDarkMode.addEventListener('click', () => {
+        
+        // Menu Dark Mode
+        $('#menuDarkMode').addEventListener('click', () => {
             document.body.classList.toggle('dark-mode');
             const isDark = document.body.classList.contains('dark-mode');
             localStorage.setItem('blmez_darkmode', isDark ? '1' : '0');
-            menuDarkMode.textContent = isDark ? '☀️ Modo Claro' : '🌓 Modo Escuro';
-            if (menuDropdown) menuDropdown.classList.remove('show');
+            $('#menuDarkMode').textContent = isDark ? '☀️ Modo Claro' : '🌓 Modo Escuro';
         });
-    }
-    
-    // Menu: Sincronizar
-    const menuSync = $('#menuSync');
-    if (menuSync) {
-        menuSync.addEventListener('click', async () => {
-            if (menuDropdown) menuDropdown.classList.remove('show');
-            await syncPendingContagens();
-            if (state.pendingContagens.length === 0) {
-                Utils.showToast('✅ Tudo sincronizado!', 'success');
-            }
+        
+        // Sync
+        $('#menuSync').addEventListener('click', async () => { await syncPendingContagens(); Utils.showToast('Sincronizado!', 'success'); });
+        
+        // Backup
+        $('#menuBackup').addEventListener('click', () => {
+            if (!state.contagensLocal.length) return Utils.showToast('Nenhum dado', 'error');
+            const blob = new Blob([JSON.stringify(state.contagensLocal, null, 2)], { type: 'application/json' });
+            Utils.downloadBlob(blob, `backup_${new Date().toISOString().slice(0,10)}.json`);
+            Utils.showToast('Backup OK', 'success');
         });
-    }
-    
-    // Menu: Backup
-    const menuBackup = $('#menuBackup');
-    if (menuBackup) {
-        menuBackup.addEventListener('click', () => {
-            if (menuDropdown) menuDropdown.classList.remove('show');
-            if (state.contagensLocal.length === 0) {
-                Utils.showToast('Nenhum dado para backup.', 'error');
-                return;
-            }
-            const json = JSON.stringify(state.contagensLocal, null, 2);
-            const blob = new Blob([json], { type: 'application/json' });
-            Utils.downloadBlob(blob, 'backup_blmez_' + new Date().toISOString().slice(0,10) + '.json');
-            Utils.showToast('Backup realizado!', 'success');
-        });
-    }
-    
-    // Menu: Restaurar
-    const menuRestore = $('#menuRestore');
-    if (menuRestore) {
-        menuRestore.addEventListener('click', () => {
-            if (menuDropdown) menuDropdown.classList.remove('show');
-            if (restoreFileInput) restoreFileInput.click();
-        });
-    }
-    
-    if (restoreFileInput) {
+        
+        // Restore
+        $('#menuRestore').addEventListener('click', () => restoreFileInput.click());
         restoreFileInput.addEventListener('change', (e) => {
             if (!e.target.files[0]) return;
             const reader = new FileReader();
             reader.onload = (ev) => {
                 try {
                     const dados = JSON.parse(ev.target.result);
-                    if (!Array.isArray(dados)) throw new Error('Formato inválido');
-                    if (confirm('Restaurar ' + dados.length + ' registros? Isso substituirá o histórico atual.')) {
+                    if (!Array.isArray(dados)) throw new Error('Inválido');
+                    if (confirm(`Restaurar ${dados.length} registros?`)) {
                         state.contagensLocal = dados;
                         state.pendingContagens = dados.filter(c => !c.synced);
-                        saveContagens();
-                        renderizarHistorico();
-                        atualizarEstatisticas();
-                        Utils.showToast('✅ ' + dados.length + ' registros restaurados!', 'success');
+                        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
                     }
-                } catch (err) {
-                    Utils.showToast('Arquivo inválido.', 'error');
-                }
+                } catch (err) { Utils.showToast('Arquivo inválido', 'error'); }
             };
             reader.readAsText(e.target.files[0]);
             e.target.value = '';
         });
-    }
-    
-    // Menu: Logout
-    const menuLogout = $('#menuLogout');
-    if (menuLogout) {
-        menuLogout.addEventListener('click', () => {
-            if (confirm('Deseja realmente sair?')) {
-                Auth.logout();
-            }
-        });
-    }
-    
-    // Abas de navegação
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tab = btn.dataset.tab;
-            
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            const tabContent = document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1));
-            if (tabContent) tabContent.classList.add('active');
-            
-            if (tab === 'historico') renderizarHistorico();
-            if (tab === 'base') atualizarBaseInfo();
-        });
-    });
-    
-    // Importação Master (aba Gerenciar Base)
-    if (importZoneMaster) {
-        importZoneMaster.addEventListener('click', () => {
-            if (fileInputMaster) fileInputMaster.click();
-        });
-    }
-    
-    if (fileInputMaster) {
-        fileInputMaster.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async (ev) => {
-                await importarBaseMaster(ev.target.result, file.name);
-            };
-            reader.readAsText(file);
-            fileInputMaster.value = '';
-        });
-    }
-    
-    if (importZoneMaster) {
-        importZoneMaster.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            importZoneMaster.classList.add('drag-over');
-        });
         
-        importZoneMaster.addEventListener('dragleave', () => {
-            importZoneMaster.classList.remove('drag-over');
-        });
+        // Logout
+        $('#menuLogout').addEventListener('click', () => { if (confirm('Sair?')) Auth.logout(); });
         
-        importZoneMaster.addEventListener('drop', async (e) => {
-            e.preventDefault();
-            importZoneMaster.classList.remove('drag-over');
-            const file = e.dataTransfer.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async (ev) => {
-                await importarBaseMaster(ev.target.result, file.name);
-            };
-            reader.readAsText(file);
-        });
-    }
-    
-    // Botão Recarregar Base
-    if (btnRecarregarBase) {
-        btnRecarregarBase.addEventListener('click', async () => {
-            await carregarBaseDoSupabase();
-        });
-    }
-    
-    // Pesquisa de código
-    function pesquisarEAtualizarCampos(codigo) {
-        if (!codigo || !codigo.trim()) {
-            if (inputDescricao) inputDescricao.value = '';
-            if (inputEmbalagem) inputEmbalagem.value = '';
-            return;
-        }
-        
-        if (state.produtosMapCodAcesso.size === 0) {
-            Utils.showToast('⚠️ Nenhuma base carregada. Importe um arquivo TXT primeiro.', 'error');
-            return;
-        }
-        
-        const produto = pesquisarProduto(codigo);
-        
-        if (produto) {
-            if (inputDescricao) inputDescricao.value = produto.descCompleta;
-            if (inputEmbalagem) inputEmbalagem.value = produto.embalagemFormatada;
-            if (inputCodigo) inputCodigo.classList.add('input-success');
-            setTimeout(() => {
-                if (inputCodigo) inputCodigo.classList.remove('input-success');
-            }, 1500);
-            Utils.playBeep();
-            Utils.vibrate(40);
-        } else {
-            if (inputDescricao) inputDescricao.value = '';
-            if (inputEmbalagem) inputEmbalagem.value = '';
-            if (inputCodigo) inputCodigo.classList.add('input-error');
-            setTimeout(() => {
-                if (inputCodigo) inputCodigo.classList.remove('input-error');
-            }, 1500);
-            Utils.showToast('❌ Produto não encontrado na base.', 'error');
-        }
-    }
-    
-    if (inputCodigo) {
-        inputCodigo.addEventListener('change', () => {
-            pesquisarEAtualizarCampos(inputCodigo.value);
-        });
-        
-        inputCodigo.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                pesquisarEAtualizarCampos(inputCodigo.value);
-                if (inputDescricao && inputDescricao.value) {
-                    if (inputQuantidade) inputQuantidade.focus();
-                    if (inputQuantidade) inputQuantidade.select();
-                }
-            }
-        });
-        
-        inputCodigo.addEventListener('blur', () => {
-            if (inputCodigo.value.trim()) {
-                pesquisarEAtualizarCampos(inputCodigo.value);
-            }
-        });
-    }
-    
-    // Salvar contagem
-    if (btnSalvar) {
-        btnSalvar.addEventListener('click', async () => {
-            const rua = inputRua ? inputRua.value.trim() : '';
-            const faixaStr = inputFaixa ? inputFaixa.value.trim() : '';
-            const codigo = inputCodigo ? inputCodigo.value.trim() : '';
-            const descricao = inputDescricao ? inputDescricao.value.trim() : '';
-            const embalagem = inputEmbalagem ? inputEmbalagem.value.trim() : '';
-            const quantidade = inputQuantidade ? (parseInt(inputQuantidade.value) || 0) : 0;
-            const observacoes = inputObservacoes ? inputObservacoes.value.trim() : '';
-            
-            if (!rua) { Utils.showToast('⚠️ Informe a Rua.', 'error'); if (inputRua) inputRua.focus(); return; }
-            if (!faixaStr) { Utils.showToast('⚠️ Informe a Faixa.', 'error'); if (inputFaixa) inputFaixa.focus(); return; }
-            if (!codigo) { Utils.showToast('⚠️ Informe o Código.', 'error'); if (inputCodigo) inputCodigo.focus(); return; }
-            if (!descricao) { Utils.showToast('⚠️ Produto não encontrado na base.', 'error'); return; }
-            if (quantidade <= 0) { Utils.showToast('⚠️ Quantidade deve ser maior que zero.', 'error'); if (inputQuantidade) inputQuantidade.focus(); return; }
-            
-            const faixa = parseInt(faixaStr);
-            const dh = Utils.formatDataHora(new Date());
-            
-            const contagem = {
-                localId: Utils.generateId(),
-                rua: rua,
-                faixa: faixa,
-                codigo: codigo,
-                descricao: descricao,
-                embalagem: embalagem,
-                quantidade: quantidade,
-                observacoes: observacoes,
-                data: dh.data,
-                hora: dh.hora,
-                dataISO: dh.iso,
-                synced: false,
-                usuario: currentUser.usuario,
-                usuarioNome: currentUser.nome
-            };
-            
-            const resultado = await salvarContagem(contagem);
-            
-            if (resultado === 'novo') {
-                Utils.showToast('✅ Contagem salva com sucesso!', 'success');
-                limparFormulario();
-            } else if (resultado === 'editar') {
-                Utils.showToast('✅ Contagem atualizada!', 'success');
-                limparFormulario();
-            } else if (resultado === 'somar') {
-                Utils.showToast('✅ Quantidade somada!', 'success');
-                limparFormulario();
-            }
-        });
-    }
-    
-    function limparFormulario() {
-        if (inputRua) inputRua.value = '';
-        if (inputFaixa) inputFaixa.value = '';
-        if (inputCodigo) inputCodigo.value = '';
-        if (inputDescricao) inputDescricao.value = '';
-        if (inputEmbalagem) inputEmbalagem.value = '';
-        if (inputQuantidade) inputQuantidade.value = '1';
-        if (inputObservacoes) inputObservacoes.value = '';
-        if (inputCodigo) inputCodigo.classList.remove('input-success', 'input-error');
-        if (inputRua) inputRua.focus();
-    }
-    
-    if (btnNovaContagem) {
-        btnNovaContagem.addEventListener('click', limparFormulario);
-    }
-    
-    // Câmera
-    if (btnCamera) {
-        btnCamera.addEventListener('click', () => {
-            if (Camera.isOpen) {
-                Camera.close();
-                if (modalCamera) modalCamera.style.display = 'none';
-            } else {
-                if (modalCamera) modalCamera.style.display = 'flex';
-                Camera.open(cameraVideo, (codigo) => {
-                    if (inputCodigo) inputCodigo.value = codigo;
-                    pesquisarEAtualizarCampos(codigo);
-                    if (!Camera.continuousMode) {
-                        if (modalCamera) modalCamera.style.display = 'none';
-                    }
-                });
-            }
-        });
-    }
-    
-    if (btnFecharCamera) {
-        btnFecharCamera.addEventListener('click', () => {
-            Camera.close();
-            if (modalCamera) modalCamera.style.display = 'none';
-        });
-    }
-    
-    if (btnCameraContinuo) {
-        btnCameraContinuo.addEventListener('click', () => {
-            const isCont = Camera.toggleContinuous();
-            if (modoCameraLabel) modoCameraLabel.textContent = isCont ? 'LIGADO' : 'DESLIGADO';
-            if (btnCameraContinuo) {
-                btnCameraContinuo.style.background = isCont ? 'var(--green)' : '';
-                btnCameraContinuo.style.color = isCont ? 'white' : '';
-            }
-        });
-    }
-    
-    if (modalCamera) {
-        modalCamera.addEventListener('click', (e) => {
-            if (e.target === modalCamera) {
-                Camera.close();
-                modalCamera.style.display = 'none';
-            }
-        });
-    }
-    
-    // Modal duplicidade
-    const btnEditarExistente = $('#btnEditarExistente');
-    const btnSomarQuantidade = $('#btnSomarQuantidade');
-    const btnCancelarDuplicidade = $('#btnCancelarDuplicidade');
-    
-    if (btnEditarExistente) {
-        btnEditarExistente.addEventListener('click', () => {
-            if (modalDuplicidade) modalDuplicidade.style.display = 'none';
-            if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar');
-        });
-    }
-    
-    if (btnSomarQuantidade) {
-        btnSomarQuantidade.addEventListener('click', () => {
-            if (modalDuplicidade) modalDuplicidade.style.display = 'none';
-            if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar');
-        });
-    }
-    
-    if (btnCancelarDuplicidade) {
-        btnCancelarDuplicidade.addEventListener('click', () => {
-            if (modalDuplicidade) modalDuplicidade.style.display = 'none';
-            if (state.resolvendoDuplicidade) {
-                state.resolvendoDuplicidade('cancelar');
-                state.resolvendoDuplicidade = null;
-            }
-        });
-    }
-    
-    if (modalDuplicidade) {
-        modalDuplicidade.addEventListener('click', (e) => {
-            if (e.target === modalDuplicidade) {
-                modalDuplicidade.style.display = 'none';
-                if (state.resolvendoDuplicidade) {
-                    state.resolvendoDuplicidade('cancelar');
-                    state.resolvendoDuplicidade = null;
-                }
-            }
-        });
-    }
-    
-    // Exportação (apenas master)
-    function getDadosExportacao() {
-        return getHistoricoFiltrado().map(c => ({
-            Rua: c.rua,
-            Faixa: c.faixa,
-            'Código': c.codigo,
-            'Descrição': c.descricao,
-            Embalagem: c.embalagem,
-            Quantidade: c.quantidade,
-            Data: c.data || '',
-            Hora: c.hora || '',
-            'Observações': c.observacoes || '',
-            'Usuário': c.usuarioNome || ''
-        }));
-    }
-    
-    if (btnExportCSV) {
-        btnExportCSV.addEventListener('click', () => {
-            if (!isMaster) {
-                Utils.showToast('Acesso restrito ao administrador.', 'error');
-                return;
-            }
-            const dados = getDadosExportacao();
-            if (dados.length === 0) {
-                Utils.showToast('Nenhum dado para exportar.', 'error');
-                return;
-            }
-            const cabecalho = ['Rua', 'Faixa', 'Código', 'Descrição', 'Embalagem', 'Quantidade', 'Data', 'Hora', 'Observações', 'Usuário'];
-            const linhas = [cabecalho.join(';')];
-            dados.forEach(d => {
-                linhas.push(Object.values(d).map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';'));
+        // Importação master
+        if (importZoneMaster) {
+            importZoneMaster.addEventListener('click', () => fileInputMaster.click());
+            fileInputMaster.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (ev) => await importarBaseMaster(ev.target.result, file.name);
+                reader.readAsText(file);
+                fileInputMaster.value = '';
             });
-            const csv = '\uFEFF' + linhas.join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            Utils.downloadBlob(blob, 'contagem_blmez_' + new Date().toISOString().slice(0,10) + '.csv');
-            Utils.showToast('CSV exportado!', 'success');
+            importZoneMaster.addEventListener('dragover', (e) => { e.preventDefault(); importZoneMaster.classList.add('drag-over'); });
+            importZoneMaster.addEventListener('dragleave', () => importZoneMaster.classList.remove('drag-over'));
+            importZoneMaster.addEventListener('drop', async (e) => {
+                e.preventDefault(); importZoneMaster.classList.remove('drag-over');
+                const file = e.dataTransfer.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (ev) => await importarBaseMaster(ev.target.result, file.name);
+                reader.readAsText(file);
+            });
+        }
+        btnRecarregarBase?.addEventListener('click', carregarBaseDoSupabase);
+        
+        // Pesquisa
+        inputCodigo.addEventListener('change', () => pesquisarEAtualizar(inputCodigo.value));
+        inputCodigo.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); pesquisarEAtualizar(inputCodigo.value); if (inputDescricao.value) { inputQuantidade.focus(); inputQuantidade.select(); } }
         });
-    }
-    
-    if (btnExportExcel) {
-        btnExportExcel.addEventListener('click', () => {
-            if (!isMaster) {
-                Utils.showToast('Acesso restrito ao administrador.', 'error');
-                return;
+        
+        function pesquisarEAtualizar(codigo) {
+            if (!codigo?.trim()) { inputDescricao.value = ''; inputEmbalagem.value = ''; return; }
+            if (!state.produtosMapCodAcesso.size) { Utils.showToast('⚠️ Base vazia', 'error'); return; }
+            const prod = pesquisarProduto(codigo);
+            if (prod) {
+                inputDescricao.value = prod.descCompleta; inputEmbalagem.value = prod.embalagemFormatada;
+                inputCodigo.classList.add('input-success');
+                setTimeout(() => inputCodigo.classList.remove('input-success'), 1500);
+                Utils.playBeep(); Utils.vibrate(40);
+            } else {
+                inputDescricao.value = ''; inputEmbalagem.value = '';
+                inputCodigo.classList.add('input-error');
+                setTimeout(() => inputCodigo.classList.remove('input-error'), 1500);
+                Utils.showToast('❌ Não encontrado', 'error');
             }
-            const dados = getDadosExportacao();
-            if (dados.length === 0) {
-                Utils.showToast('Nenhum dado para exportar.', 'error');
-                return;
+        }
+        
+        // Salvar
+        btnSalvar.addEventListener('click', async () => {
+            const rua = inputRua.value.trim(), faixa = parseInt(inputFaixa.value)||0, codigo = inputCodigo.value.trim();
+            const desc = inputDescricao.value.trim(), emb = inputEmbalagem.value.trim(), qtd = parseInt(inputQuantidade.value)||0;
+            const obs = inputObservacoes.value.trim();
+            if (!rua || !faixa || !codigo || !desc || qtd<=0) { Utils.showToast('Preencha todos os campos', 'error'); return; }
+            const dh = Utils.formatDataHora(new Date());
+            const contagem = { localId: Utils.generateId(), rua, faixa, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome };
+            const res = await salvarContagem(contagem);
+            if (res !== 'cancelar') {
+                Utils.showToast('✅ Salvo!', 'success');
+                inputRua.value = ''; inputFaixa.value = ''; inputCodigo.value = ''; inputDescricao.value = ''; inputEmbalagem.value = '';
+                inputQuantidade.value = '1'; inputObservacoes.value = '';
+                inputRua.focus();
             }
-            if (typeof XLSX === 'undefined') {
-                Utils.showToast('Biblioteca SheetJS não carregada.', 'error');
-                return;
-            }
+            renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+        });
+        
+        btnNovaContagem.addEventListener('click', () => {
+            inputRua.value = ''; inputFaixa.value = ''; inputCodigo.value = ''; inputDescricao.value = ''; inputEmbalagem.value = '';
+            inputQuantidade.value = '1'; inputObservacoes.value = ''; inputRua.focus();
+        });
+        
+        // Câmera
+        btnCamera.addEventListener('click', () => {
+            if (Camera.isOpen) { Camera.close(); modalCamera.style.display = 'none'; }
+            else { modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigo) => { inputCodigo.value = codigo; pesquisarEAtualizar(codigo); if (!Camera.continuousMode) modalCamera.style.display = 'none'; }); }
+        });
+        btnFecharCamera.addEventListener('click', () => { Camera.close(); modalCamera.style.display = 'none'; });
+        btnCameraContinuo.addEventListener('click', () => {
+            const cont = Camera.toggleContinuous();
+            modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO';
+            btnCameraContinuo.style.background = cont ? 'var(--green)' : '';
+        });
+        
+        // Duplicidade
+        $('#btnEditarExistente').addEventListener('click', () => { modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar'); });
+        $('#btnSomarQuantidade').addEventListener('click', () => { modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar'); });
+        $('#btnCancelarDuplicidade').addEventListener('click', () => { modalDuplicidade.style.display = 'none'; state.resolvendoDuplicidade = null; });
+        
+        // Exportação
+        btnExportCSV?.addEventListener('click', () => {
+            if (!isMaster) return Utils.showToast('Acesso restrito', 'error');
+            const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data||'', Hora: c.hora||'', Observações: c.observacoes||'' }));
+            if (!dados.length) return Utils.showToast('Nenhum dado', 'error');
+            const cab = Object.keys(dados[0]).join(';');
+            const csv = '\uFEFF' + [cab, ...dados.map(d => Object.values(d).map(v => `"${String(v).replace(/"/g,'""')}"`).join(';'))].join('\n');
+            Utils.downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `contagem_${new Date().toISOString().slice(0,10)}.csv`);
+        });
+        
+        btnExportExcel?.addEventListener('click', () => {
+            if (!isMaster) return Utils.showToast('Acesso restrito', 'error');
+            const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data||'', Hora: c.hora||'', Observações: c.observacoes||'' }));
+            if (!dados.length) return Utils.showToast('Nenhum dado', 'error');
             const ws = XLSX.utils.json_to_sheet(dados);
-            ws['!cols'] = [
-                { wch: 8 }, { wch: 8 }, { wch: 20 }, { wch: 40 },
-                { wch: 15 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 25 }, { wch: 20 }
-            ];
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Contagens');
-            XLSX.writeFile(wb, 'contagem_blmez_' + new Date().toISOString().slice(0,10) + '.xlsx');
-            Utils.showToast('Excel exportado!', 'success');
+            XLSX.writeFile(wb, `contagem_${new Date().toISOString().slice(0,10)}.xlsx`);
         });
+        
+        // Filtros
+        [filtroRua, filtroFaixa, filtroCodigo, filtroDescricao].forEach(i => i?.addEventListener('input', renderizarHistorico));
+        
+        // Ordenação
+        $$('thead th[data-sort]').forEach(th => th.addEventListener('click', () => {
+            const col = th.dataset.sort;
+            state.sortDirection = state.sortColumn === col ? (state.sortDirection === 'asc' ? 'desc' : 'asc') : 'asc';
+            state.sortColumn = col;
+            renderizarHistorico();
+        }));
+        
+        // Atalhos
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { if (Camera.isOpen) { Camera.close(); modalCamera.style.display = 'none'; } }
+            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); btnSalvar.click(); }
+            if (e.key === 'Enter' && document.activeElement === inputQuantidade) { e.preventDefault(); btnSalvar.click(); }
+        });
+        
+        window.addEventListener('online', async () => { if (Database.supabase) { await syncPendingContagens(); if (!state.produtosMapCodAcesso.size) await carregarBaseDoSupabase(); } });
     }
     
-    // Filtros do histórico
-    [filtroRua, filtroFaixa, filtroCodigo, filtroDescricao].forEach(input => {
-        if (input) input.addEventListener('input', renderizarHistorico);
-    });
-    
-    // Ordenação
-    $$('thead th[data-sort]').forEach(th => {
-        th.addEventListener('click', () => {
-            const col = th.dataset.sort;
-            if (state.sortColumn === col) {
-                state.sortDirection = state.sortDirection === 'asc' ? 'desc' : 'asc';
-            } else {
-                state.sortColumn = col;
-                state.sortDirection = 'asc';
-            }
-            renderizarHistorico();
-        });
-    });
-    
-    // Atalhos de teclado
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            if (Camera.isOpen) {
-                Camera.close();
-                if (modalCamera) modalCamera.style.display = 'none';
-            }
-            if (modalDuplicidade && modalDuplicidade.style.display === 'flex') {
-                modalDuplicidade.style.display = 'none';
-            }
-            limparFormulario();
-        }
-        
-        if (e.ctrlKey && e.key === 'Enter') {
-            e.preventDefault();
-            if (btnSalvar) btnSalvar.click();
-        }
-        
-        if (e.key === 'Enter' && document.activeElement === inputQuantidade) {
-            e.preventDefault();
-            if (btnSalvar) btnSalvar.click();
-        }
-    });
-    
-    // Online/Offline
-    window.addEventListener('online', async () => {
-        Utils.showToast('🌐 Conexão restaurada!', 'success');
-        if (Database.supabase) {
-            await syncPendingContagens();
-            if (state.produtosMapCodAcesso.size === 0) {
-                await carregarBaseDoSupabase();
-            }
-        }
-    });
-    
-    window.addEventListener('offline', () => {
-        Utils.showToast('📱 Modo offline. Dados salvos localmente.', 'warning');
-    });
-    
-    // ============ INICIAR APLICAÇÃO ============
+    // Iniciar
     init();
-    
 })();

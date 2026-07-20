@@ -8,7 +8,6 @@
     <title>Contagem BL_MEZ</title>
     <link rel="stylesheet" href="css/style.css">
     
-    <!-- Bibliotecas (carregadas primeiro) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -18,6 +17,7 @@
         <!-- HEADER -->
         <header class="app-header">
             <div class="header-left">
+                <button class="hamburger-btn" id="hamburgerBtn" title="Menu">☰</button>
                 <div class="logo">📦</div>
                 <h1>CONTAGEM BL_MEZ</h1>
             </div>
@@ -26,145 +26,183 @@
                 <span class="user-badge" id="userNameDisplay">👤 Carregando...</span>
                 <span class="master-badge" id="masterBadge" style="display:none;">MASTER</span>
                 <span id="connectionDot" style="font-size:0.7rem;margin-left:4px;"></span>
-                
-                <div class="hamburger-menu">
-                    <button class="hamburger-btn" id="hamburgerBtn">☰</button>
-                    <div class="menu-dropdown" id="menuDropdown">
-                        <button class="menu-item" id="menuDarkMode">🌓 Modo Escuro</button>
-                        <button class="menu-item" id="menuSync">🔄 Sincronizar</button>
-                        <div class="menu-divider"></div>
-                        <button class="menu-item" id="menuBackup">💾 Backup</button>
-                        <button class="menu-item" id="menuRestore">📥 Restaurar</button>
-                        <input type="file" id="restoreFileInput" accept=".json" style="display:none;">
-                        <div class="menu-divider"></div>
-                        <button class="menu-item danger" id="menuLogout">🚪 Sair</button>
-                    </div>
-                </div>
             </div>
         </header>
         
-        <!-- ABAS -->
-        <nav class="tab-navigation">
-            <button class="tab-btn active" data-tab="contagem">📊 Contagem</button>
-            <button class="tab-btn" data-tab="base" id="tabBaseBtn" style="display:none;">📂 Gerenciar Base</button>
-            <button class="tab-btn" data-tab="historico" id="tabHistoricoBtn" style="display:none;">📋 Histórico</button>
+        <!-- SIDEBAR (menu lateral) -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h3>Menu</h3>
+                <button class="sidebar-close" id="sidebarClose">✕</button>
+            </div>
+            <button class="sidebar-item active" data-section="contagem">
+                📊 Contagem
+            </button>
+            <button class="sidebar-item" data-section="base" id="menuBase" style="display:none;">
+                📂 Gerenciar Base
+            </button>
+            <button class="sidebar-item" data-section="historico" id="menuHistorico" style="display:none;">
+                📋 Histórico
+            </button>
+            <button class="sidebar-item" data-section="dashboard">
+                📈 Dashboard por Rua
+            </button>
+            <div class="sidebar-divider"></div>
+            <button class="sidebar-item" id="menuDarkMode">
+                🌓 Modo Escuro
+            </button>
+            <button class="sidebar-item" id="menuSync">
+                🔄 Sincronizar
+            </button>
+            <button class="sidebar-item" id="menuBackup">
+                💾 Backup
+            </button>
+            <button class="sidebar-item" id="menuRestore">
+                📥 Restaurar
+            </button>
+            <input type="file" id="restoreFileInput" accept=".json" style="display:none;">
+            <div class="sidebar-divider"></div>
+            <button class="sidebar-item danger" id="menuLogout">
+                🚪 Sair
+            </button>
         </nav>
-        
-        <!-- ============ ABA 1: CONTAGEM ============ -->
-        <div class="tab-content active" id="tabContagem">
-            <div class="container">
-                <!-- Info da base -->
-                <section class="card">
-                    <div class="card-header"><span class="icon">📦</span> Status da Base</div>
-                    <div class="import-info" id="importInfo">Carregando...</div>
-                </section>
-                
-                <!-- Formulário de contagem -->
-                <section class="card">
-                    <div class="card-header"><span class="icon">🔢</span> Contagem de Estoque</div>
-                    <div class="form-grid">
-                        <div class="form-group"><label>Rua</label><input type="text" id="rua" placeholder="Ex: BL1"></div>
-                        <div class="form-group"><label>Faixa</label><input type="number" id="faixa" placeholder="Número" min="1"></div>
-                        <div class="form-group">
-                            <label>Código</label>
-                            <div class="input-with-btn">
-                                <input type="text" id="codigo" placeholder="Digite ou escaneie..." autocomplete="off">
-                                <button class="btn-camera" id="btnCamera">📷</button>
+
+        <!-- CONTEÚDO PRINCIPAL -->
+        <main class="main-content">
+            <!-- SEÇÃO: CONTAGEM -->
+            <section class="section-content active" id="secaoContagem">
+                <div class="container">
+                    <!-- Status da Base -->
+                    <div class="card">
+                        <div class="card-header"><span class="icon">📦</span> Status da Base</div>
+                        <div class="import-info" id="importInfo">Carregando...</div>
+                    </div>
+                    
+                    <!-- Formulário de Contagem -->
+                    <div class="card">
+                        <div class="card-header"><span class="icon">🔢</span> Contagem de Estoque</div>
+                        <div class="form-grid">
+                            <div class="form-group"><label>Rua</label><input type="text" id="rua" placeholder="Ex: BL1"></div>
+                            <div class="form-group"><label>Faixa</label><input type="number" id="faixa" placeholder="Número" min="1"></div>
+                            <div class="form-group">
+                                <label>Código</label>
+                                <div class="input-with-btn">
+                                    <input type="text" id="codigo" placeholder="Digite ou escaneie..." autocomplete="off">
+                                    <button class="btn-camera" id="btnCamera">📷</button>
+                                </div>
                             </div>
+                            <div class="form-group"><label>Descrição</label><input type="text" id="descricao" readonly></div>
+                            <div class="form-group"><label>Embalagem</label><input type="text" id="embalagem" readonly></div>
+                            <div class="form-group"><label>Qtd. Paletes</label><input type="number" id="quantidade" value="1" min="1"></div>
+                            <div class="form-group" style="grid-column:span 2;"><label>Observações</label><input type="text" id="observacoes"></div>
                         </div>
-                        <div class="form-group"><label>Descrição</label><input type="text" id="descricao" readonly></div>
-                        <div class="form-group"><label>Embalagem</label><input type="text" id="embalagem" readonly></div>
-                        <div class="form-group"><label>Qtd. Paletes</label><input type="number" id="quantidade" value="1" min="1"></div>
-                        <div class="form-group" style="grid-column:span 2;"><label>Observações</label><input type="text" id="observacoes"></div>
+                        <div class="btn-row">
+                            <button class="btn btn-success" id="btnSalvar">✅ Salvar</button>
+                            <button class="btn btn-outline" id="btnNovaContagem">🔄 Limpar</button>
+                        </div>
                     </div>
-                    <div class="btn-row">
-                        <button class="btn btn-success" id="btnSalvar">✅ Salvar</button>
-                        <button class="btn btn-outline" id="btnNovaContagem">🔄 Limpar</button>
+                </div>
+            </section>
+
+            <!-- SEÇÃO: BASE (apenas master) -->
+            <section class="section-content" id="secaoBase">
+                <div class="container">
+                    <div class="card">
+                        <div class="card-header"><span class="icon">📂</span> Gerenciar Base de Produtos</div>
+                        <p style="margin-bottom:12px;color:var(--text-secondary);">
+                            Ao importar um novo arquivo TXT, a base atual será <strong>totalmente substituída</strong> no Supabase.
+                        </p>
+                        <div class="import-zone" id="importZoneMaster">
+                            <p style="font-size:2rem;">📁</p>
+                            <p><strong>Arraste o arquivo TXT aqui</strong><br>ou clique para selecionar</p>
+                            <input type="file" id="fileInputMaster" accept=".txt,.csv,.tsv" style="display:none;">
+                        </div>
+                        <div class="progress-bar" id="progressBarMaster">
+                            <div class="progress-fill" id="progressFillMaster"></div>
+                        </div>
+                        <div id="importStatusMaster" style="margin-top:12px;font-size:0.85rem;color:var(--text-secondary);"></div>
+                        <div class="btn-row" style="margin-top:12px;">
+                            <button class="btn btn-outline btn-sm" id="btnRecarregarBase">🔄 Recarregar do Supabase</button>
+                            <span id="baseInfo" style="margin-left:10px;font-size:0.85rem;"></span>
+                        </div>
                     </div>
-                </section>
-                
-                <!-- Estatísticas -->
-                <section class="card">
-                    <div class="card-header"><span class="icon">📊</span> Estatísticas</div>
-                    <div class="stats-grid">
-                        <div class="stat-card"><div class="stat-value" id="statItens">0</div><div class="stat-label">Itens</div></div>
-                        <div class="stat-card"><div class="stat-value" id="statPaletes">0</div><div class="stat-label">Paletes</div></div>
+                </div>
+            </section>
+
+            <!-- SEÇÃO: HISTÓRICO (apenas master) -->
+            <section class="section-content" id="secaoHistorico">
+                <div class="container">
+                    <div class="card">
+                        <div class="card-header"><span class="icon">📋</span> Histórico de Contagens</div>
+                        <div class="filtros-row">
+                            <input type="text" id="filtroRua" placeholder="🔍 Rua...">
+                            <input type="text" id="filtroFaixa" placeholder="🔍 Faixa...">
+                            <input type="text" id="filtroCodigo" placeholder="🔍 Código...">
+                            <input type="text" id="filtroDescricao" placeholder="🔍 Descrição...">
+                        </div>
+                        <div class="btn-row" style="margin-bottom:10px;">
+                            <button class="btn btn-outline btn-sm" id="btnExportCSV">📄 CSV</button>
+                            <button class="btn btn-outline btn-sm" id="btnExportExcel">📊 Excel</button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th data-sort="rua">Rua</th>
+                                        <th data-sort="faixa">Faixa</th>
+                                        <th data-sort="codigo">Código</th>
+                                        <th data-sort="descricao">Descrição</th>
+                                        <th data-sort="embalagem">Embalagem</th>
+                                        <th data-sort="quantidade">Qtd</th>
+                                        <th data-sort="data">Data</th>
+                                        <th data-sort="hora">Hora</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaHistorico"></tbody>
+                            </table>
+                        </div>
+                        <p id="nenhumRegistro" style="text-align:center;padding:20px;">Nenhuma contagem.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SEÇÃO: DASHBOARD POR RUA -->
+            <section class="section-content" id="secaoDashboard">
+                <div class="container">
+                    <!-- Cards de estatísticas -->
+                    <div class="stats-grid" id="dashboardStats">
+                        <div class="stat-card"><div class="stat-value" id="statItens">0</div><div class="stat-label">Itens Contados</div></div>
+                        <div class="stat-card"><div class="stat-value" id="statPaletes">0</div><div class="stat-label">Total Paletes</div></div>
                         <div class="stat-card"><div class="stat-value" id="statProdutos">0</div><div class="stat-label">Produtos Únicos</div></div>
-                        <div class="stat-card"><div class="stat-value" id="statUltima" style="font-size:0.85rem;">--</div><div class="stat-label">Última</div></div>
-                    </div>
-                </section>
-            </div>
-        </div>
-        
-        <!-- ============ ABA 2: BASE (MASTER) ============ -->
-        <div class="tab-content" id="tabBase">
-            <div class="container">
-                <section class="card">
-                    <div class="card-header"><span class="icon">📂</span> Gerenciar Base de Produtos</div>
-                    <p style="margin-bottom:12px;color:var(--text-secondary);">
-                        Ao importar um novo arquivo TXT, a base atual será <strong>totalmente substituída</strong> no Supabase.
-                    </p>
-                    
-                    <div class="import-zone" id="importZoneMaster">
-                        <p style="font-size:2rem;">📁</p>
-                        <p><strong>Arraste o arquivo TXT aqui</strong><br>ou clique para selecionar</p>
-                        <input type="file" id="fileInputMaster" accept=".txt,.csv,.tsv" style="display:none;">
+                        <div class="stat-card"><div class="stat-value" id="statUltima" style="font-size:0.85rem;">--</div><div class="stat-label">Última Contagem</div></div>
                     </div>
                     
-                    <div class="progress-bar" id="progressBarMaster">
-                        <div class="progress-fill" id="progressFillMaster"></div>
+                    <!-- Tabela agrupada por rua -->
+                    <div class="card" style="margin-top:16px;">
+                        <div class="card-header"><span class="icon">📊</span> Resumo por Rua</div>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Rua</th>
+                                        <th>Total de Itens</th>
+                                        <th>Total de Paletes</th>
+                                        <th>Última Contagem</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaDashboard"></tbody>
+                            </table>
+                        </div>
+                        <p id="nenhumDashboard" style="text-align:center;padding:20px;">Nenhuma contagem registrada.</p>
                     </div>
-                    
-                    <div id="importStatusMaster" style="margin-top:12px;font-size:0.85rem;color:var(--text-secondary);"></div>
-                    
-                    <div class="btn-row" style="margin-top:12px;">
-                        <button class="btn btn-outline btn-sm" id="btnRecarregarBase">🔄 Recarregar do Supabase</button>
-                        <span id="baseInfo" style="margin-left:10px;font-size:0.85rem;"></span>
-                    </div>
-                </section>
-            </div>
-        </div>
-        
-        <!-- ============ ABA 3: HISTÓRICO (MASTER) ============ -->
-        <div class="tab-content" id="tabHistorico">
-            <div class="container">
-                <section class="card">
-                    <div class="card-header"><span class="icon">📋</span> Histórico</div>
-                    <div class="filtros-row">
-                        <input type="text" id="filtroRua" placeholder="🔍 Rua...">
-                        <input type="text" id="filtroFaixa" placeholder="🔍 Faixa...">
-                        <input type="text" id="filtroCodigo" placeholder="🔍 Código...">
-                        <input type="text" id="filtroDescricao" placeholder="🔍 Descrição...">
-                    </div>
-                    <div class="btn-row" style="margin-bottom:10px;">
-                        <button class="btn btn-outline btn-sm" id="btnExportCSV">📄 CSV</button>
-                        <button class="btn btn-outline btn-sm" id="btnExportExcel">📊 Excel</button>
-                    </div>
-                    <div class="table-wrapper">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th data-sort="rua">Rua</th>
-                                    <th data-sort="faixa">Faixa</th>
-                                    <th data-sort="codigo">Código</th>
-                                    <th data-sort="descricao">Descrição</th>
-                                    <th data-sort="embalagem">Embalagem</th>
-                                    <th data-sort="quantidade">Qtd</th>
-                                    <th data-sort="data">Data</th>
-                                    <th data-sort="hora">Hora</th>
-                                    <th>Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tabelaHistorico"></tbody>
-                        </table>
-                    </div>
-                    <p id="nenhumRegistro" style="text-align:center;padding:20px;">Nenhuma contagem.</p>
-                </section>
-            </div>
-        </div>
+                </div>
+            </section>
+        </main>
     </div>
     
-    <!-- Modais -->
+    <!-- Modais (duplicidade e câmera) - mantidos -->
     <div class="modal-overlay" id="modalDuplicidade" style="display:none;">
         <div class="modal">
             <h3>⚠️ Item já contado</h3>
@@ -191,7 +229,7 @@
     
     <div id="toastContainer"></div>
 
-    <!-- Scripts na ordem correta -->
+    <!-- Scripts -->
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/database.js"></script>
