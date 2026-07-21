@@ -158,23 +158,43 @@
     
     // ============ BASE ============
     async function carregarBaseDoSupabase() {
-        if (!Database.supabase) return;
-        try {
-            const produtos = await Database.fetchProdutos();
-            if (produtos && produtos.length > 0) {
-                construirIndices(produtos);
-                state.baseMeta = { nomeArquivo: 'Supabase', totalRegistros: produtos.length, dataHoraImportacao: new Date().toISOString() };
-                Database.saveBaseMeta(state.baseMeta);
-                atualizarInfoImportacao();
-                atualizarBaseInfo();
-                Utils.showToast('✅ ' + produtos.length + ' produtos carregados', 'success');
-            } else {
-                if (importInfo) importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Base vazia</span>';
-            }
-        } catch (err) {
-            if (importInfo) importInfo.innerHTML = '<span style="color:var(--red);">❌ ' + Utils.escapeHTML(err.message) + '</span>';
-        }
+    if (!Database.supabase) {
+        console.error('❌ carregarBase: supabase é null');
+        return;
     }
+    
+    try {
+        Utils.showToast('🔄 Carregando base do Supabase...', 'success');
+        console.log('🔄 Buscando produtos...');
+        
+        const produtos = await Database.fetchProdutos();
+        
+        if (produtos && produtos.length > 0) {
+            construirIndices(produtos);
+            
+            state.baseMeta = {
+                nomeArquivo: 'Supabase',
+                totalRegistros: produtos.length,
+                dataHoraImportacao: new Date().toISOString()
+            };
+            
+            Database.saveBaseMeta(state.baseMeta);
+            atualizarInfoImportacao();
+            atualizarBaseInfo();
+            
+            console.log(`✅ ${produtos.length} produtos carregados na memória`);
+            Utils.showToast(`✅ ${produtos.length.toLocaleString('pt-BR')} produtos carregados!`, 'success');
+        } else {
+            console.log('⚠️ Nenhum produto encontrado no Supabase');
+            if (importInfo) importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Base vazia. Importe um arquivo TXT na aba Gerenciar Base.</span>';
+            Utils.showToast('⚠️ Base vazia - Importe um TXT', 'warning');
+        }
+    } catch (err) {
+        console.error('❌ Erro ao carregar base:', err.message);
+        if (importInfo) importInfo.innerHTML = '<span style="color:var(--red);">❌ Erro: ' + Utils.escapeHTML(err.message) + '</span>';
+        Utils.showToast('❌ Erro: ' + err.message, 'error');
+    }
+},
     
     function construirIndices(produtos) {
         state.produtosMapCodAcesso.clear();

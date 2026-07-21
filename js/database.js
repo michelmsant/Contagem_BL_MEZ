@@ -48,17 +48,63 @@ const Database = {
         }
     },
     
-    async fetchProdutos() {
-        if (!this.supabase) return [];
-        console.log('🔄 Buscando produtos...');
-        const { data, error } = await this.supabase.from('produtos').select('*');
-        if (error) {
-            console.error('❌ Erro fetch:', error.message);
-            throw error;
+    // Buscar TODOS os produtos do Supabase (até 50.000)
+async fetchProdutos() {
+    if (!this.supabase) {
+        console.error('❌ fetchProdutos: supabase é null');
+        return [];
+    }
+    
+    console.log('🔄 Buscando TODOS os produtos do Supabase...');
+    
+    try {
+        let todosProdutos = [];
+        let pagina = 0;
+        const limitePorPagina = 1000; // Máximo por requisição
+        let temMais = true;
+        
+        while (temMais) {
+            const inicio = pagina * limitePorPagina;
+            const fim = inicio + limitePorPagina - 1;
+            
+            console.log(`   📄 Página ${pagina + 1} (registros ${inicio}-${fim})...`);
+            
+            const { data, error, count } = await this.supabase
+                .from('produtos')
+                .select('*', { count: 'exact' })
+                .range(inicio, fim);
+            
+            if (error) {
+                console.error('❌ Erro ao buscar:', error.message);
+                throw error;
+            }
+            
+            if (data && data.length > 0) {
+                todosProdutos = todosProdutos.concat(data);
+                console.log(`   ✅ ${data.length} registros carregados (total: ${todosProdutos.length})`);
+                
+                // Se retornou menos que o limite, chegou ao fim
+                if (data.length < limitePorPagina) {
+                    temMais = false;
+                } else {
+                    pagina++;
+                }
+            } else {
+                temMais = false;
+            }
+            
+            // Pequena pausa para não sobrecarregar
+            await new Promise(r => setTimeout(r, 100));
         }
-        console.log('✅ Produtos:', data.length);
-        return data;
-    },
+        
+        console.log(`✅ Total carregado: ${todosProdutos.length} produtos`);
+        return todosProdutos;
+        
+    } catch (e) {
+        console.error('❌ Exceção ao buscar produtos:', e.message);
+        throw e;
+ }
+},
     
     async replaceProdutos(produtosArray, onProgress) {
         if (!this.supabase) throw new Error('Supabase não conectado');
