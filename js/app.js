@@ -8,21 +8,12 @@
     const $ = (s) => document.querySelector(s);
     const $$ = (s) => document.querySelectorAll(s);
     
-    // Elementos do menu/sidebar
     const hamburgerBtn = $('#hamburgerBtn');
     const sidebar = $('#sidebar');
     const sidebarOverlay = $('#sidebarOverlay');
     const sidebarClose = $('#sidebarClose');
     const menuBase = $('#menuBase');
     const menuHistorico = $('#menuHistorico');
-    
-    // Elementos das seções
-    const secaoContagem = $('#secaoContagem');
-    const secaoBase = $('#secaoBase');
-    const secaoHistorico = $('#secaoHistorico');
-    const secaoDashboard = $('#secaoDashboard');
-    
-    // Elementos de UI
     const userNameDisplay = $('#userNameDisplay');
     const masterBadge = $('#masterBadge');
     const connectionDot = $('#connectionDot');
@@ -79,7 +70,7 @@
         dbConnected: false
     };
     
-    // ============ INICIALIZAÇÃO ============
+    // ============ INIT ============
     async function init() {
         console.log('🚀 Iniciando...');
         if (userNameDisplay) userNameDisplay.textContent = '👤 ' + currentUser.nome;
@@ -124,14 +115,12 @@
         }
         
         setupEventListeners();
-        abrirSecao('contagem'); // padrão
+        abrirSecao('contagem');
         console.log('✅ Pronto!');
     }
     
     function updateConnectionDot() {
-        if (connectionDot) {
-            connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
-        }
+        if (connectionDot) connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
     }
     
     // ============ SIDEBAR ============
@@ -146,46 +135,35 @@
     }
     
     function abrirSecao(nome) {
-        // Esconde todas
-        [secaoContagem, secaoBase, secaoHistorico, secaoDashboard].forEach(s => {
-            if (s) s.classList.remove('active');
+        ['secaoContagem','secaoBase','secaoHistorico','secaoDashboard'].forEach(id => {
+            const el = $('#' + id);
+            if (el) el.classList.remove('active');
         });
-        // Mostra a escolhida
-        const mapa = {
-            contagem: secaoContagem,
-            base: secaoBase,
-            historico: secaoHistorico,
-            dashboard: secaoDashboard
-        };
-        const secao = mapa[nome];
+        
+        const mapa = { contagem: 'secaoContagem', base: 'secaoBase', historico: 'secaoHistorico', dashboard: 'secaoDashboard' };
+        const secao = $('#' + mapa[nome]);
         if (secao) secao.classList.add('active');
         
-        // Atualiza item ativo no sidebar
         $$('.sidebar-item[data-section]').forEach(item => {
             item.classList.remove('active');
             if (item.dataset.section === nome) item.classList.add('active');
         });
         
-        // Ações específicas
         if (nome === 'historico') renderizarHistorico();
-        if (nome === 'dashboard') renderizarDashboard();
+        if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
         if (nome === 'base') atualizarBaseInfo();
         
         fecharSidebar();
     }
     
-    // ============ BASE DE PRODUTOS ============
+    // ============ BASE ============
     async function carregarBaseDoSupabase() {
         if (!Database.supabase) return;
         try {
             const produtos = await Database.fetchProdutos();
             if (produtos && produtos.length > 0) {
                 construirIndices(produtos);
-                state.baseMeta = {
-                    nomeArquivo: 'Supabase',
-                    totalRegistros: produtos.length,
-                    dataHoraImportacao: new Date().toISOString()
-                };
+                state.baseMeta = { nomeArquivo: 'Supabase', totalRegistros: produtos.length, dataHoraImportacao: new Date().toISOString() };
                 Database.saveBaseMeta(state.baseMeta);
                 atualizarInfoImportacao();
                 atualizarBaseInfo();
@@ -202,15 +180,8 @@
         state.produtosMapCodAcesso.clear();
         state.produtosMapSeqProduto.clear();
         for (const p of produtos) {
-            const emb = p.embalagem && p.qtdembalagem ? `${p.embalagem} x ${p.qtdembalagem}` : (p.embalagem || p.qtdembalagem || '');
-            const prod = {
-                seqProduto: p.seqproduto || '',
-                descCompleta: p.desccompleta || '',
-                codAcesso: p.codacesso || '',
-                embalagem: p.embalagem || '',
-                qtdEmbalagem: p.qtdembalagem || '',
-                embalagemFormatada: emb
-            };
+            const emb = p.embalagem && p.qtdembalagem ? p.embalagem + ' x ' + p.qtdembalagem : (p.embalagem || p.qtdembalagem || '');
+            const prod = { seqProduto: p.seqproduto||'', descCompleta: p.desccompleta||'', codAcesso: p.codacesso||'', embalagem: p.embalagem||'', qtdEmbalagem: p.qtdembalagem||'', embalagemFormatada: emb };
             if (prod.codAcesso) state.produtosMapCodAcesso.set(prod.codAcesso, prod);
             if (prod.seqProduto) state.produtosMapSeqProduto.set(prod.seqProduto, prod);
         }
@@ -222,7 +193,7 @@
         try {
             const linhas = conteudo.split(/\r?\n/).filter(l => l.trim());
             if (!linhas.length) throw new Error('Vazio');
-            const delimitadores = ['\t', ';', ','];
+            const delimitadores = ['\t',';',','];
             let del = '\t', max = 0;
             delimitadores.forEach(d => { const c = linhas[0].split(d).length; if (c > max) { max = c; del = d; } });
             const cab = linhas[0].split(del);
@@ -232,23 +203,17 @@
             for (let i = inicio; i < linhas.length; i++) {
                 const cols = linhas[i].split(del);
                 if (cols.length < 9) continue;
-                arr.push({
-                    seqproduto: (cols[1]||'').trim(),
-                    desccompleta: (cols[2]||'').trim(),
-                    codacesso: (cols[3]||'').trim(),
-                    embalagem: (cols[7]||'').trim(),
-                    qtdembalagem: (cols[8]||'').trim()
-                });
+                arr.push({ seqproduto: (cols[1]||'').trim(), desccompleta: (cols[2]||'').trim(), codacesso: (cols[3]||'').trim(), embalagem: (cols[7]||'').trim(), qtdembalagem: (cols[8]||'').trim() });
             }
-            await Database.replaceProdutos(arr, p => { progressFillMaster.style.width = p+'%'; });
+            await Database.replaceProdutos(arr, p => { if (progressFillMaster) progressFillMaster.style.width = p + '%'; });
             construirIndices(arr.map(p => ({ seqproduto: p.seqproduto, desccompleta: p.desccompleta, codacesso: p.codacesso, embalagem: p.embalagem, qtdembalagem: p.qtdembalagem })));
             state.baseMeta = { nomeArquivo, totalRegistros: state.produtosMapCodAcesso.size, dataHoraImportacao: new Date().toISOString() };
             Database.saveBaseMeta(state.baseMeta);
             atualizarInfoImportacao();
             atualizarBaseInfo();
-            importStatusMaster.innerHTML = '<span style="color:green">✅ '+state.produtosMapCodAcesso.size+' produtos</span>';
+            if (importStatusMaster) importStatusMaster.innerHTML = '<span style="color:green">✅ ' + state.produtosMapCodAcesso.size + ' produtos</span>';
         } catch (e) {
-            importStatusMaster.innerHTML = '<span style="color:red">❌ '+Utils.escapeHTML(e.message)+'</span>';
+            if (importStatusMaster) importStatusMaster.innerHTML = '<span style="color:red">❌ ' + Utils.escapeHTML(e.message) + '</span>';
         } finally {
             progressBarMaster.classList.remove('active');
         }
@@ -257,17 +222,15 @@
     function atualizarInfoImportacao() {
         if (!importInfo) return;
         if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) {
-            importInfo.innerHTML = '<span style="color:orange">⚠️ Nenhuma base</span>';
+            importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada.</span>';
             return;
         }
         const dh = Utils.formatDataHora(state.baseMeta.dataHoraImportacao);
-        importInfo.innerHTML = `<span class="badge">📄 ${Utils.escapeHTML(state.baseMeta.nomeArquivo)}</span>
-            <span class="badge">📊 ${state.produtosMapCodAcesso.size.toLocaleString('pt-BR')} registros</span>
-            <span>📅 ${dh.data} ${dh.hora}</span> <span class="badge">☁️ Supabase</span>`;
+        importInfo.innerHTML = '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span> <span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span> <span>📅 ' + dh.data + ' ' + dh.hora + '</span> <span class="badge">☁️ Supabase</span>';
     }
     
     function atualizarBaseInfo() {
-        if (baseInfo) baseInfo.textContent = `${state.produtosMapCodAcesso.size.toLocaleString('pt-BR')} produtos`;
+        if (baseInfo) baseInfo.textContent = state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' produtos na base';
     }
     
     // ============ PESQUISA ============
@@ -303,10 +266,11 @@
                     if (op === 'editar') state.contagensLocal[idx] = { ...contagem, synced: false, localId: state.contagensLocal[idx].localId };
                     else if (op === 'somar') { state.contagensLocal[idx].quantidade += contagem.quantidade; state.contagensLocal[idx].synced = false; }
                     saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+                    state.resolvendoDuplicidade = null;
                     resolve(op);
                 };
-                msgDuplicidade.innerHTML = `<strong>${state.contagensLocal[idx].rua}</strong> / Faixa ${state.contagensLocal[idx].faixa}<br>Qtd atual: ${state.contagensLocal[idx].quantidade} | Nova: ${contagem.quantidade}`;
-                modalDuplicidade.style.display = 'flex';
+                if (msgDuplicidade) msgDuplicidade.innerHTML = '<strong>' + Utils.escapeHTML(state.contagensLocal[idx].rua) + '</strong> / Faixa ' + state.contagensLocal[idx].faixa + '<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
+                if (modalDuplicidade) modalDuplicidade.style.display = 'flex';
             });
         }
         state.contagensLocal.push(contagem);
@@ -328,7 +292,7 @@
         saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
     }
     
-    // ============ RENDERIZAÇÃO ============
+    // ============ RENDER ============
     function getHistoricoFiltrado() {
         let lista = [...state.contagensLocal];
         if (filtroRua?.value.trim()) lista = lista.filter(c => c.rua.toLowerCase().includes(filtroRua.value.toLowerCase().trim()));
@@ -358,7 +322,7 @@
             if (nenhumRegistro) nenhumRegistro.style.display = 'none';
             lista.forEach(c => {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${Utils.escapeHTML(c.rua)}</td><td>${c.faixa}</td><td>${Utils.escapeHTML(c.codigo)} ${c.synced?'☁️':'📱'}</td><td>${Utils.escapeHTML(c.descricao)}</td><td>${Utils.escapeHTML(c.embalagem)}</td><td><strong>${c.quantidade}</strong></td><td>${c.data||'--'}</td><td>${c.hora||'--'}</td><td><button class="btn btn-outline btn-sm btn-editar" data-id="${c.localId}">✏️</button> <button class="btn btn-danger-text btn-sm btn-excluir" data-id="${c.localId}">🗑️</button></td>`;
+                tr.innerHTML = '<td>' + Utils.escapeHTML(c.rua) + '</td><td>' + c.faixa + '</td><td>' + Utils.escapeHTML(c.codigo) + ' ' + (c.synced?'☁️':'📱') + '</td><td>' + Utils.escapeHTML(c.descricao) + '</td><td>' + Utils.escapeHTML(c.embalagem) + '</td><td><strong>' + c.quantidade + '</strong></td><td>' + (c.data||'--') + '</td><td>' + (c.hora||'--') + '</td><td><button class="btn btn-outline btn-sm btn-editar" data-id="' + c.localId + '">✏️</button> <button class="btn btn-danger-text btn-sm btn-excluir" data-id="' + c.localId + '">🗑️</button></td>';
                 tabelaHistorico.appendChild(tr);
             });
             tabelaHistorico.querySelectorAll('.btn-editar').forEach(b => b.addEventListener('click', function() {
@@ -390,7 +354,7 @@
             entradas.forEach(([rua, dados]) => {
                 const dh = dados.ultima ? Utils.formatDataHora(dados.ultima) : { data: '--', hora: '--' };
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td><strong>${Utils.escapeHTML(rua)}</strong></td><td>${dados.itens}</td><td>${dados.paletes}</td><td>${dh.data} ${dh.hora}</td>`;
+                tr.innerHTML = '<td><strong>' + Utils.escapeHTML(rua) + '</strong></td><td>' + dados.itens + '</td><td>' + dados.paletes + '</td><td>' + dh.data + ' ' + dh.hora + '</td>';
                 tabelaDashboard.appendChild(tr);
             });
         }
@@ -398,9 +362,13 @@
     
     function editarContagem(index) {
         const c = state.contagensLocal[index];
-        inputRua.value = c.rua; inputFaixa.value = c.faixa; inputCodigo.value = c.codigo;
-        inputDescricao.value = c.descricao; inputEmbalagem.value = c.embalagem;
-        inputQuantidade.value = c.quantidade; inputObservacoes.value = c.observacoes || '';
+        if (inputRua) inputRua.value = c.rua;
+        if (inputFaixa) inputFaixa.value = c.faixa;
+        if (inputCodigo) inputCodigo.value = c.codigo;
+        if (inputDescricao) inputDescricao.value = c.descricao;
+        if (inputEmbalagem) inputEmbalagem.value = c.embalagem;
+        if (inputQuantidade) inputQuantidade.value = c.quantidade;
+        if (inputObservacoes) inputObservacoes.value = c.observacoes || '';
         state.contagensLocal.splice(index,1);
         state.pendingContagens = state.pendingContagens.filter(p => p.localId !== c.localId);
         saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
@@ -415,6 +383,7 @@
         state.contagensLocal.splice(index,1);
         state.pendingContagens = state.pendingContagens.filter(p => p.localId !== c.localId);
         saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+        Utils.showToast('Excluída.', 'success');
     }
     
     function atualizarEstatisticas() {
@@ -423,21 +392,20 @@
         if (statProdutos) statProdutos.textContent = new Set(state.contagensLocal.map(c => c.codigo)).size.toLocaleString('pt-BR');
         if (statUltima && state.contagensLocal.length) {
             const u = state.contagensLocal[state.contagensLocal.length-1];
-            statUltima.textContent = `${u.data||'--'} ${u.hora||'--'}`;
+            statUltima.textContent = (u.data||'--') + ' ' + (u.hora||'--');
         }
     }
     
     // ============ EVENTOS ============
     function setupEventListeners() {
-        // Sidebar
         hamburgerBtn.addEventListener('click', abrirSidebar);
         sidebarClose.addEventListener('click', fecharSidebar);
         sidebarOverlay.addEventListener('click', fecharSidebar);
+        
         $$('.sidebar-item[data-section]').forEach(item => {
             item.addEventListener('click', () => abrirSecao(item.dataset.section));
         });
         
-        // Menu Dark Mode
         $('#menuDarkMode').addEventListener('click', () => {
             document.body.classList.toggle('dark-mode');
             const isDark = document.body.classList.contains('dark-mode');
@@ -445,38 +413,38 @@
             $('#menuDarkMode').textContent = isDark ? '☀️ Modo Claro' : '🌓 Modo Escuro';
         });
         
-        // Sync
         $('#menuSync').addEventListener('click', async () => { await syncPendingContagens(); Utils.showToast('Sincronizado!', 'success'); });
         
-        // Backup
         $('#menuBackup').addEventListener('click', () => {
-            if (!state.contagensLocal.length) return Utils.showToast('Nenhum dado', 'error');
+            if (!state.contagensLocal.length) { Utils.showToast('Nenhum dado', 'error'); return; }
             const blob = new Blob([JSON.stringify(state.contagensLocal, null, 2)], { type: 'application/json' });
-            Utils.downloadBlob(blob, `backup_${new Date().toISOString().slice(0,10)}.json`);
+            Utils.downloadBlob(blob, 'backup_' + new Date().toISOString().slice(0,10) + '.json');
             Utils.showToast('Backup OK', 'success');
         });
         
-        // Restore
-        $('#menuRestore').addEventListener('click', () => restoreFileInput.click());
-        restoreFileInput.addEventListener('change', (e) => {
-            if (!e.target.files[0]) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                try {
-                    const dados = JSON.parse(ev.target.result);
-                    if (!Array.isArray(dados)) throw new Error('Inválido');
-                    if (confirm(`Restaurar ${dados.length} registros?`)) {
-                        state.contagensLocal = dados;
-                        state.pendingContagens = dados.filter(c => !c.synced);
-                        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
-                    }
-                } catch (err) { Utils.showToast('Arquivo inválido', 'error'); }
-            };
-            reader.readAsText(e.target.files[0]);
-            e.target.value = '';
-        });
+        $('#menuRestore').addEventListener('click', () => { if (restoreFileInput) restoreFileInput.click(); });
         
-        // Logout
+        if (restoreFileInput) {
+            restoreFileInput.addEventListener('change', (e) => {
+                if (!e.target.files[0]) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const dados = JSON.parse(ev.target.result);
+                        if (!Array.isArray(dados)) throw new Error('Inválido');
+                        if (confirm('Restaurar ' + dados.length + ' registros?')) {
+                            state.contagensLocal = dados;
+                            state.pendingContagens = dados.filter(c => !c.synced);
+                            saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+                            Utils.showToast('✅ Restaurado!', 'success');
+                        }
+                    } catch (err) { Utils.showToast('Arquivo inválido', 'error'); }
+                };
+                reader.readAsText(e.target.files[0]);
+                e.target.value = '';
+            });
+        }
+        
         $('#menuLogout').addEventListener('click', () => { if (confirm('Sair?')) Auth.logout(); });
         
         // Importação master
@@ -501,93 +469,133 @@
                 reader.readAsText(file);
             });
         }
-        btnRecarregarBase?.addEventListener('click', carregarBaseDoSupabase);
+        
+        if (btnRecarregarBase) btnRecarregarBase.addEventListener('click', carregarBaseDoSupabase);
         
         // Pesquisa
-        inputCodigo.addEventListener('change', () => pesquisarEAtualizar(inputCodigo.value));
-        inputCodigo.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); pesquisarEAtualizar(inputCodigo.value); if (inputDescricao.value) { inputQuantidade.focus(); inputQuantidade.select(); } }
-        });
+        if (inputCodigo) {
+            inputCodigo.addEventListener('change', () => pesquisarEAtualizar(inputCodigo.value));
+            inputCodigo.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); pesquisarEAtualizar(inputCodigo.value); if (inputDescricao && inputDescricao.value) { inputQuantidade.focus(); inputQuantidade.select(); } }
+            });
+        }
         
         function pesquisarEAtualizar(codigo) {
-            if (!codigo?.trim()) { inputDescricao.value = ''; inputEmbalagem.value = ''; return; }
+            if (!codigo?.trim()) { if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = ''; return; }
             if (!state.produtosMapCodAcesso.size) { Utils.showToast('⚠️ Base vazia', 'error'); return; }
             const prod = pesquisarProduto(codigo);
             if (prod) {
-                inputDescricao.value = prod.descCompleta; inputEmbalagem.value = prod.embalagemFormatada;
-                inputCodigo.classList.add('input-success');
-                setTimeout(() => inputCodigo.classList.remove('input-success'), 1500);
+                if (inputDescricao) inputDescricao.value = prod.descCompleta;
+                if (inputEmbalagem) inputEmbalagem.value = prod.embalagemFormatada;
+                if (inputCodigo) inputCodigo.classList.add('input-success');
+                setTimeout(() => { if (inputCodigo) inputCodigo.classList.remove('input-success'); }, 1500);
                 Utils.playBeep(); Utils.vibrate(40);
             } else {
-                inputDescricao.value = ''; inputEmbalagem.value = '';
-                inputCodigo.classList.add('input-error');
-                setTimeout(() => inputCodigo.classList.remove('input-error'), 1500);
+                if (inputDescricao) inputDescricao.value = '';
+                if (inputEmbalagem) inputEmbalagem.value = '';
+                if (inputCodigo) inputCodigo.classList.add('input-error');
+                setTimeout(() => { if (inputCodigo) inputCodigo.classList.remove('input-error'); }, 1500);
                 Utils.showToast('❌ Não encontrado', 'error');
             }
         }
         
         // Salvar
-        btnSalvar.addEventListener('click', async () => {
-            const rua = inputRua.value.trim(), faixa = parseInt(inputFaixa.value)||0, codigo = inputCodigo.value.trim();
-            const desc = inputDescricao.value.trim(), emb = inputEmbalagem.value.trim(), qtd = parseInt(inputQuantidade.value)||0;
-            const obs = inputObservacoes.value.trim();
-            if (!rua || !faixa || !codigo || !desc || qtd<=0) { Utils.showToast('Preencha todos os campos', 'error'); return; }
-            const dh = Utils.formatDataHora(new Date());
-            const contagem = { localId: Utils.generateId(), rua, faixa, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome };
-            const res = await salvarContagem(contagem);
-            if (res !== 'cancelar') {
-                Utils.showToast('✅ Salvo!', 'success');
-                inputRua.value = ''; inputFaixa.value = ''; inputCodigo.value = ''; inputDescricao.value = ''; inputEmbalagem.value = '';
-                inputQuantidade.value = '1'; inputObservacoes.value = '';
-                inputRua.focus();
-            }
-            renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
-        });
+        if (btnSalvar) {
+            btnSalvar.addEventListener('click', async () => {
+                const rua = inputRua ? inputRua.value.trim() : '';
+                const faixa = parseInt(inputFaixa ? inputFaixa.value : 0) || 0;
+                const codigo = inputCodigo ? inputCodigo.value.trim() : '';
+                const desc = inputDescricao ? inputDescricao.value.trim() : '';
+                const emb = inputEmbalagem ? inputEmbalagem.value.trim() : '';
+                const qtd = parseInt(inputQuantidade ? inputQuantidade.value : 0) || 0;
+                const obs = inputObservacoes ? inputObservacoes.value.trim() : '';
+                
+                if (!rua || !faixa || !codigo || !desc || qtd <= 0) {
+                    Utils.showToast('⚠️ Preencha todos os campos', 'error');
+                    return;
+                }
+                
+                const dh = Utils.formatDataHora(new Date());
+                const contagem = { localId: Utils.generateId(), rua, faixa, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome };
+                const res = await salvarContagem(contagem);
+                
+                if (res !== 'cancelar') {
+                    Utils.showToast('✅ Salvo!', 'success');
+                    if (inputRua) inputRua.value = '';
+                    if (inputFaixa) inputFaixa.value = '';
+                    if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success', 'input-error'); }
+                    if (inputDescricao) inputDescricao.value = '';
+                    if (inputEmbalagem) inputEmbalagem.value = '';
+                    if (inputQuantidade) inputQuantidade.value = '1';
+                    if (inputObservacoes) inputObservacoes.value = '';
+                    if (inputRua) inputRua.focus();
+                }
+                
+                renderizarHistorico();
+                renderizarDashboard();
+                atualizarEstatisticas();
+            });
+        }
         
-        btnNovaContagem.addEventListener('click', () => {
-            inputRua.value = ''; inputFaixa.value = ''; inputCodigo.value = ''; inputDescricao.value = ''; inputEmbalagem.value = '';
-            inputQuantidade.value = '1'; inputObservacoes.value = ''; inputRua.focus();
-        });
+        if (btnNovaContagem) {
+            btnNovaContagem.addEventListener('click', () => {
+                if (inputRua) inputRua.value = '';
+                if (inputFaixa) inputFaixa.value = '';
+                if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success', 'input-error'); }
+                if (inputDescricao) inputDescricao.value = '';
+                if (inputEmbalagem) inputEmbalagem.value = '';
+                if (inputQuantidade) inputQuantidade.value = '1';
+                if (inputObservacoes) inputObservacoes.value = '';
+                if (inputRua) inputRua.focus();
+            });
+        }
         
         // Câmera
-        btnCamera.addEventListener('click', () => {
-            if (Camera.isOpen) { Camera.close(); modalCamera.style.display = 'none'; }
-            else { modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigo) => { inputCodigo.value = codigo; pesquisarEAtualizar(codigo); if (!Camera.continuousMode) modalCamera.style.display = 'none'; }); }
-        });
-        btnFecharCamera.addEventListener('click', () => { Camera.close(); modalCamera.style.display = 'none'; });
-        btnCameraContinuo.addEventListener('click', () => {
-            const cont = Camera.toggleContinuous();
-            modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO';
-            btnCameraContinuo.style.background = cont ? 'var(--green)' : '';
-        });
+        if (btnCamera) {
+            btnCamera.addEventListener('click', () => {
+                if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; }
+                else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigo) => { if (inputCodigo) inputCodigo.value = codigo; pesquisarEAtualizar(codigo); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); }
+            });
+        }
+        
+        if (btnFecharCamera) btnFecharCamera.addEventListener('click', () => { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; });
+        
+        if (btnCameraContinuo) {
+            btnCameraContinuo.addEventListener('click', () => {
+                const cont = Camera.toggleContinuous();
+                if (modoCameraLabel) modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO';
+            });
+        }
         
         // Duplicidade
-        $('#btnEditarExistente').addEventListener('click', () => { modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar'); });
-        $('#btnSomarQuantidade').addEventListener('click', () => { modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar'); });
-        $('#btnCancelarDuplicidade').addEventListener('click', () => { modalDuplicidade.style.display = 'none'; state.resolvendoDuplicidade = null; });
+        $('#btnEditarExistente')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar'); });
+        $('#btnSomarQuantidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar'); });
+        $('#btnCancelarDuplicidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; state.resolvendoDuplicidade = null; });
         
         // Exportação
         btnExportCSV?.addEventListener('click', () => {
-            if (!isMaster) return Utils.showToast('Acesso restrito', 'error');
+            if (!isMaster) { Utils.showToast('Acesso restrito', 'error'); return; }
             const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data||'', Hora: c.hora||'', Observações: c.observacoes||'' }));
-            if (!dados.length) return Utils.showToast('Nenhum dado', 'error');
+            if (!dados.length) { Utils.showToast('Nenhum dado', 'error'); return; }
             const cab = Object.keys(dados[0]).join(';');
-            const csv = '\uFEFF' + [cab, ...dados.map(d => Object.values(d).map(v => `"${String(v).replace(/"/g,'""')}"`).join(';'))].join('\n');
-            Utils.downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `contagem_${new Date().toISOString().slice(0,10)}.csv`);
+            const csv = '\uFEFF' + [cab, ...dados.map(d => Object.values(d).map(v => '"' + String(v).replace(/"/g,'""') + '"').join(';'))].join('\n');
+            Utils.downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), 'contagem_' + new Date().toISOString().slice(0,10) + '.csv');
+            Utils.showToast('CSV exportado!', 'success');
         });
         
         btnExportExcel?.addEventListener('click', () => {
-            if (!isMaster) return Utils.showToast('Acesso restrito', 'error');
+            if (!isMaster) { Utils.showToast('Acesso restrito', 'error'); return; }
             const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data||'', Hora: c.hora||'', Observações: c.observacoes||'' }));
-            if (!dados.length) return Utils.showToast('Nenhum dado', 'error');
+            if (!dados.length) { Utils.showToast('Nenhum dado', 'error'); return; }
             const ws = XLSX.utils.json_to_sheet(dados);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Contagens');
-            XLSX.writeFile(wb, `contagem_${new Date().toISOString().slice(0,10)}.xlsx`);
+            XLSX.writeFile(wb, 'contagem_' + new Date().toISOString().slice(0,10) + '.xlsx');
+            Utils.showToast('Excel exportado!', 'success');
         });
         
         // Filtros
-        [filtroRua, filtroFaixa, filtroCodigo, filtroDescricao].forEach(i => i?.addEventListener('input', renderizarHistorico));
+        [filtroRua, filtroFaixa, filtroCodigo, filtroDescricao].forEach(i => { if (i) i.addEventListener('input', renderizarHistorico); });
         
         // Ordenação
         $$('thead th[data-sort]').forEach(th => th.addEventListener('click', () => {
@@ -599,14 +607,14 @@
         
         // Atalhos
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { if (Camera.isOpen) { Camera.close(); modalCamera.style.display = 'none'; } }
-            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); btnSalvar.click(); }
-            if (e.key === 'Enter' && document.activeElement === inputQuantidade) { e.preventDefault(); btnSalvar.click(); }
+            if (e.key === 'Escape') { if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; } }
+            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); if (btnSalvar) btnSalvar.click(); }
+            if (e.key === 'Enter' && document.activeElement === inputQuantidade) { e.preventDefault(); if (btnSalvar) btnSalvar.click(); }
         });
         
         window.addEventListener('online', async () => { if (Database.supabase) { await syncPendingContagens(); if (!state.produtosMapCodAcesso.size) await carregarBaseDoSupabase(); } });
+        window.addEventListener('offline', () => Utils.showToast('📱 Offline', 'warning'));
     }
     
-    // Iniciar
     init();
 })();

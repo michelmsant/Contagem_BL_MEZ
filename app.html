@@ -29,57 +29,39 @@
             </div>
         </header>
         
-        <!-- SIDEBAR (menu lateral) -->
+        <!-- SIDEBAR OVERLAY -->
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        
+        <!-- SIDEBAR -->
         <nav class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <h3>Menu</h3>
                 <button class="sidebar-close" id="sidebarClose">✕</button>
             </div>
-            <button class="sidebar-item active" data-section="contagem">
-                📊 Contagem
-            </button>
-            <button class="sidebar-item" data-section="base" id="menuBase" style="display:none;">
-                📂 Gerenciar Base
-            </button>
-            <button class="sidebar-item" data-section="historico" id="menuHistorico" style="display:none;">
-                📋 Histórico
-            </button>
-            <button class="sidebar-item" data-section="dashboard">
-                📈 Dashboard por Rua
-            </button>
+            <button class="sidebar-item active" data-section="contagem">📊 Contagem</button>
+            <button class="sidebar-item" data-section="base" id="menuBase" style="display:none;">📂 Gerenciar Base</button>
+            <button class="sidebar-item" data-section="historico" id="menuHistorico" style="display:none;">📋 Histórico</button>
+            <button class="sidebar-item" data-section="dashboard">📈 Dashboard por Rua</button>
             <div class="sidebar-divider"></div>
-            <button class="sidebar-item" id="menuDarkMode">
-                🌓 Modo Escuro
-            </button>
-            <button class="sidebar-item" id="menuSync">
-                🔄 Sincronizar
-            </button>
-            <button class="sidebar-item" id="menuBackup">
-                💾 Backup
-            </button>
-            <button class="sidebar-item" id="menuRestore">
-                📥 Restaurar
-            </button>
+            <button class="sidebar-item" id="menuDarkMode">🌓 Modo Escuro</button>
+            <button class="sidebar-item" id="menuSync">🔄 Sincronizar</button>
+            <button class="sidebar-item" id="menuBackup">💾 Backup</button>
+            <button class="sidebar-item" id="menuRestore">📥 Restaurar</button>
             <input type="file" id="restoreFileInput" accept=".json" style="display:none;">
             <div class="sidebar-divider"></div>
-            <button class="sidebar-item danger" id="menuLogout">
-                🚪 Sair
-            </button>
+            <button class="sidebar-item danger" id="menuLogout">🚪 Sair</button>
         </nav>
 
-        <!-- CONTEÚDO PRINCIPAL -->
+        <!-- MAIN CONTENT -->
         <main class="main-content">
-            <!-- SEÇÃO: CONTAGEM -->
+            <!-- CONTAGEM -->
             <section class="section-content active" id="secaoContagem">
                 <div class="container">
-                    <!-- Status da Base -->
                     <div class="card">
                         <div class="card-header"><span class="icon">📦</span> Status da Base</div>
                         <div class="import-info" id="importInfo">Carregando...</div>
                     </div>
                     
-                    <!-- Formulário de Contagem -->
                     <div class="card">
                         <div class="card-header"><span class="icon">🔢</span> Contagem de Estoque</div>
                         <div class="form-grid">
@@ -98,14 +80,14 @@
                             <div class="form-group" style="grid-column:span 2;"><label>Observações</label><input type="text" id="observacoes"></div>
                         </div>
                         <div class="btn-row">
-                            <button class="btn btn-success" id="btnSalvar">✅ Salvar</button>
-                            <button class="btn btn-outline" id="btnNovaContagem">🔄 Limpar</button>
+                            <button class="btn btn-success" id="btnSalvar" style="width:auto;">✅ Salvar</button>
+                            <button class="btn btn-outline" id="btnNovaContagem" style="width:auto;margin-top:0;">🔄 Limpar</button>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- SEÇÃO: BASE (apenas master) -->
+            <!-- BASE (MASTER) -->
             <section class="section-content" id="secaoBase">
                 <div class="container">
                     <div class="card">
@@ -130,7 +112,7 @@
                 </div>
             </section>
 
-            <!-- SEÇÃO: HISTÓRICO (apenas master) -->
+            <!-- HISTÓRICO (MASTER) -->
             <section class="section-content" id="secaoHistorico">
                 <div class="container">
                     <div class="card">
@@ -168,18 +150,16 @@
                 </div>
             </section>
 
-            <!-- SEÇÃO: DASHBOARD POR RUA -->
+            <!-- DASHBOARD -->
             <section class="section-content" id="secaoDashboard">
                 <div class="container">
-                    <!-- Cards de estatísticas -->
                     <div class="stats-grid" id="dashboardStats">
-                        <div class="stat-card"><div class="stat-value" id="statItens">0</div><div class="stat-label">Itens Contados</div></div>
-                        <div class="stat-card"><div class="stat-value" id="statPaletes">0</div><div class="stat-label">Total Paletes</div></div>
+                        <div class="stat-card"><div class="stat-value" id="statItens">0</div><div class="stat-label">Itens</div></div>
+                        <div class="stat-card"><div class="stat-value" id="statPaletes">0</div><div class="stat-label">Paletes</div></div>
                         <div class="stat-card"><div class="stat-value" id="statProdutos">0</div><div class="stat-label">Produtos Únicos</div></div>
-                        <div class="stat-card"><div class="stat-value" id="statUltima" style="font-size:0.85rem;">--</div><div class="stat-label">Última Contagem</div></div>
+                        <div class="stat-card"><div class="stat-value" id="statUltima" style="font-size:0.85rem;">--</div><div class="stat-label">Última</div></div>
                     </div>
                     
-                    <!-- Tabela agrupada por rua -->
                     <div class="card" style="margin-top:16px;">
                         <div class="card-header"><span class="icon">📊</span> Resumo por Rua</div>
                         <div class="table-wrapper">
@@ -202,15 +182,15 @@
         </main>
     </div>
     
-    <!-- Modais (duplicidade e câmera) - mantidos -->
+    <!-- MODAIS -->
     <div class="modal-overlay" id="modalDuplicidade" style="display:none;">
         <div class="modal">
             <h3>⚠️ Item já contado</h3>
             <p id="msgDuplicidade"></p>
             <div class="btn-row">
-                <button class="btn btn-primary" id="btnEditarExistente">✏️ Editar</button>
-                <button class="btn btn-success" id="btnSomarQuantidade">➕ Somar</button>
-                <button class="btn btn-outline" id="btnCancelarDuplicidade">❌ Cancelar</button>
+                <button class="btn btn-primary" id="btnEditarExistente" style="width:auto;">✏️ Editar</button>
+                <button class="btn btn-success" id="btnSomarQuantidade" style="width:auto;">➕ Somar</button>
+                <button class="btn btn-outline" id="btnCancelarDuplicidade" style="width:auto;margin-top:0;">❌ Cancelar</button>
             </div>
         </div>
     </div>
@@ -229,7 +209,6 @@
     
     <div id="toastContainer"></div>
 
-    <!-- Scripts -->
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/database.js"></script>
