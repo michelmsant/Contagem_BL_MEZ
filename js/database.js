@@ -15,35 +15,68 @@ const Database = {
     },
     
     init() {
+        console.log('🔌 Inicializando Supabase...');
+        console.log('URL:', this.URL);
+        
         try {
+            // Verificar se o SDK foi carregado
             if (typeof window.supabase === 'undefined') {
-                console.error('❌ Supabase SDK não carregado');
+                console.error('❌ SDK do Supabase não encontrado');
                 return false;
             }
-            this.supabase = window.supabase.createClient(this.URL, this.ANON_KEY);
-            console.log('✅ Supabase inicializado');
+            
+            // Criar cliente
+            this.supabase = window.supabase.createClient(this.URL, this.ANON_KEY, {
+                auth: {
+                    persistSession: false,
+                    autoRefreshToken: false
+                }
+            });
+            
+            console.log('✅ Cliente Supabase criado com sucesso');
             return true;
+            
         } catch (e) {
-            console.error('❌ Erro Supabase:', e.message);
+            console.error('❌ Erro ao criar cliente Supabase:', e.message);
             return false;
         }
     },
     
     async testConnection() {
-        if (!this.supabase) return false;
+        if (!this.supabase) {
+            console.error('❌ testConnection: supabase é null');
+            return false;
+        }
+        
         try {
-            const { error } = await this.supabase.from('produtos').select('id', { count: 'exact', head: true });
-            if (error) { console.error('❌ Erro conexão:', error.message); return false; }
-            console.log('✅ Conexão OK');
+            console.log('🔍 Testando conexão com Supabase...');
+            
+            const { data, error } = await this.supabase
+                .from('produtos')
+                .select('id', { count: 'exact', head: true });
+            
+            if (error) {
+                console.error('❌ Erro no teste:', error.message);
+                return false;
+            }
+            
+            console.log('✅ Conexão OK - Tabela produtos acessível');
             return true;
-        } catch (e) { return false; }
+            
+        } catch (e) {
+            console.error('❌ Exceção no teste:', e.message);
+            return false;
+        }
     },
     
     // Buscar TODOS os produtos com paginação
     async fetchProdutos() {
-        if (!this.supabase) return [];
+        if (!this.supabase) {
+            console.error('❌ fetchProdutos: supabase é null');
+            return [];
+        }
         
-        console.log('🔄 Buscando TODOS os produtos...');
+        console.log('🔄 Buscando TODOS os produtos do Supabase...');
         
         try {
             let todosProdutos = [];
@@ -55,15 +88,22 @@ const Database = {
                 const inicio = pagina * limitePorPagina;
                 const fim = inicio + limitePorPagina - 1;
                 
+                console.log(`   📄 Página ${pagina + 1} (${inicio}-${fim})...`);
+                
                 const { data, error } = await this.supabase
                     .from('produtos')
                     .select('*')
                     .range(inicio, fim);
                 
-                if (error) throw error;
+                if (error) {
+                    console.error('❌ Erro ao buscar:', error.message);
+                    throw error;
+                }
                 
                 if (data && data.length > 0) {
                     todosProdutos = todosProdutos.concat(data);
+                    console.log(`   ✅ ${data.length} registros (total acumulado: ${todosProdutos.length})`);
+                    
                     if (data.length < limitePorPagina) {
                         temMais = false;
                     } else {
@@ -72,20 +112,37 @@ const Database = {
                 } else {
                     temMais = false;
                 }
+                
+                // Pequena pausa
+                await new Promise(r => setTimeout(r, 100));
             }
             
-            console.log('✅ Total carregado: ' + todosProdutos.length + ' produtos');
+            console.log(`✅ Total carregado: ${todosProdutos.length} produtos`);
             return todosProdutos;
+            
         } catch (e) {
-            console.error('❌ Erro fetchProdutos:', e.message);
+            console.error('❌ Exceção fetchProdutos:', e.message);
             throw e;
         }
     },
     
+    // Substituir todos os produtos
     async replaceProdutos(produtosArray, onProgress) {
         if (!this.supabase) throw new Error('Supabase não conectado');
         
-        await this.supabase.from('produtos').delete().neq('id', 0);
+        console.log('🧹 Limpando tabela...');
+        
+        const { error: delError } = await this.supabase
+            .from('produtos')
+            .delete()
+            .neq('id', 0);
+        
+        if (delError) {
+            console.error('❌ Erro ao limpar:', delError.message);
+            throw delError;
+        }
+        
+        console.log(`📤 Enviando ${produtosArray.length} produtos...`);
         
         const BATCH = 500;
         const total = produtosArray.length;
@@ -94,34 +151,74 @@ const Database = {
             const batch = produtosArray.slice(i, i + BATCH);
             const { error } = await this.supabase.from('produtos').insert(batch);
             if (error) throw error;
-            if (onProgress) onProgress(Math.round(((i + batch.length) / total) * 100));
+            
+            if (onProgress) {
+                onProgress(Math.round(((i + batch.length) / total) * 100));
+            }
+            
             await new Promise(r => setTimeout(r, 80));
         }
         
+        console.log('✅ Todos produtos enviados!');
         return true;
     },
     
+    // Contagens
     async fetchContagens() {
         if (!this.supabase) return [];
-        const { data } = await this.supabase.from('contagens').select('*').order('created_at', { ascending: false }).limit(5000);
+        
+        const { data, error } = await this.supabase
+            .from('contagens')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(5000);
+        
+        if (error) {
+            console.error('❌ Erro fetchContagens:', error.message);
+            throw error;
+        }
+        
         return data || [];
     },
     
     async saveContagem(contagem) {
-        const { data, error } = await this.supabase.from('contagens').insert([contagem]).select('id').single();
-        if (error) throw error;
+        if (!this.supabase) return null;
+        
+        const { data, error } = await this.supabase
+            .from('contagens')
+            .insert([contagem])
+            .select('id')
+            .single();
+        
+        if (error) {
+            console.error('❌ Erro saveContagem:', error.message);
+            throw error;
+        }
+        
         return data;
     },
     
     async deleteContagem(id) {
+        if (!this.supabase) return;
         await this.supabase.from('contagens').delete().eq('id', id);
     },
     
+    // Metadados
     saveBaseMeta(meta) {
-        try { localStorage.setItem(this.KEYS.BASE_META, JSON.stringify(meta)); } catch (e) {}
+        try {
+            localStorage.setItem(this.KEYS.BASE_META, JSON.stringify(meta));
+        } catch (e) {}
     },
     
     loadBaseMeta() {
-        try { return JSON.parse(localStorage.getItem(this.KEYS.BASE_META)); } catch (e) { return null; }
+        try {
+            const data = localStorage.getItem(this.KEYS.BASE_META);
+            return data ? JSON.parse(data) : null;
+        } catch (e) {
+            return null;
+        }
     }
 };
+
+// Inicializar automaticamente ao carregar o script
+console.log('📦 Database.js carregado');
