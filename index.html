@@ -3,11 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#0D47A1">
+    <meta name="theme-color" content="#1a2a4a">
     <title>Contagem BL_MEZ - Login</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=2.0">
+    
+    <style>
+        /* Botão Dark Mode na tela de login */
+        .dark-mode-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.25);
+            color: white;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+        
+        .dark-mode-toggle:hover {
+            background: rgba(255,255,255,0.25);
+            transform: scale(1.05);
+        }
+        
+        body.dark-mode .dark-mode-toggle {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.2);
+        }
+        
+        body.dark-mode .login-container {
+            background: linear-gradient(160deg, #0a0f1a 0%, #1a2a4a 40%, #0a0f1a 100%);
+        }
+    </style>
 </head>
 <body>
+    <!-- Botão Dark Mode -->
+    <button class="dark-mode-toggle" id="darkModeToggle" title="Alternar modo escuro">🌙</button>
+
     <div class="login-container">
         <div class="login-card">
             <!-- Tela de Login -->
@@ -48,7 +88,7 @@
                 </div>
                 
                 <div class="error-message" id="cadastroError"></div>
-                <div class="success-message" id="cadastroSuccess" style="display:none; background: var(--green-light); color: var(--green); padding: 10px 16px; border-radius: var(--radius-sm); font-size: 0.85rem; margin-bottom: 16px;"></div>
+                <div class="success-message" id="cadastroSuccess" style="display:none; background: var(--green-light); color: var(--green-dark); padding: 12px 16px; border-radius: var(--radius-sm); font-size: 0.85rem; margin-bottom: 16px; border: 1px solid rgba(16,185,129,0.2);"></div>
                 
                 <div class="form-group">
                     <label>Nome Completo</label>
@@ -92,13 +132,37 @@
             const loginError = document.getElementById('loginError');
             const cadastroError = document.getElementById('cadastroError');
             const cadastroSuccess = document.getElementById('cadastroSuccess');
+            const darkModeToggle = document.getElementById('darkModeToggle');
             
+            // Verificar se já está logado
             const currentUser = Auth.getCurrentUser();
             if (currentUser) {
                 window.location.href = 'app.html';
                 return;
             }
             
+            // ============ DARK MODE ============
+            function updateDarkModeButton() {
+                const isDark = document.body.classList.contains('dark-mode');
+                darkModeToggle.textContent = isDark ? '☀️' : '🌙';
+                darkModeToggle.title = isDark ? 'Modo Claro' : 'Modo Escuro';
+            }
+            
+            // Verificar preferência salva
+            if (localStorage.getItem('blmez_darkmode') === '1') {
+                document.body.classList.add('dark-mode');
+            }
+            updateDarkModeButton();
+            
+            // Toggle dark mode
+            darkModeToggle.addEventListener('click', () => {
+                document.body.classList.toggle('dark-mode');
+                const isDark = document.body.classList.contains('dark-mode');
+                localStorage.setItem('blmez_darkmode', isDark ? '1' : '0');
+                updateDarkModeButton();
+            });
+            
+            // Alternar entre login e cadastro
             document.getElementById('showCadastro').addEventListener('click', (e) => {
                 e.preventDefault();
                 loginScreen.style.display = 'none';
@@ -114,6 +178,7 @@
                 cadastroSuccess.style.display = 'none';
             });
             
+            // Login
             document.getElementById('btnLogin').addEventListener('click', () => {
                 const usuario = document.getElementById('loginUsuario').value;
                 const senha = document.getElementById('loginSenha').value;
@@ -128,7 +193,7 @@
                 
                 if (resultado.sucesso) {
                     loginError.classList.remove('show');
-                    Utils.showToast(resultado.mensagem, 'success');
+                    showToast(resultado.mensagem, 'success');
                     setTimeout(() => {
                         window.location.href = 'app.html';
                     }, 800);
@@ -146,6 +211,7 @@
                 if (e.key === 'Enter') document.getElementById('loginSenha').focus();
             });
             
+            // Cadastro
             document.getElementById('btnCadastrar').addEventListener('click', () => {
                 const nome = document.getElementById('cadastroNome').value;
                 const usuario = document.getElementById('cadastroUsuario').value;
@@ -190,6 +256,16 @@
             });
             
             document.getElementById('loginUsuario').focus();
+            
+            // Toast function
+            function showToast(msg, type) {
+                const container = document.getElementById('toastContainer');
+                const toast = document.createElement('div');
+                toast.className = 'toast ' + (type || '');
+                toast.textContent = msg;
+                container.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
         });
     </script>
 </body>
