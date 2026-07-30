@@ -1,17 +1,13 @@
 (function() {
     'use strict';
     
-    // Verificar acesso
     const currentUser = Auth.checkAccess();
     if (!currentUser) return;
-    
     const isMaster = Auth.isMaster();
     
-    // Atalhos DOM
     const $ = (s) => document.querySelector(s);
     const $$ = (s) => document.querySelectorAll(s);
     
-    // Elementos da UI
     const hamburgerBtn = $('#hamburgerBtn');
     const sidebar = $('#sidebar');
     const sidebarOverlay = $('#sidebarOverlay');
@@ -62,7 +58,6 @@
     const btnExportCSV = $('#btnExportCSV');
     const btnExportExcel = $('#btnExportExcel');
     
-    // Estado
     const state = {
         produtosMapCodAcesso: new Map(),
         produtosMapSeqProduto: new Map(),
@@ -80,33 +75,26 @@
         console.log('🚀 Iniciando Contagem BL_MEZ...');
         console.log('👤 Usuário:', currentUser.nome, '| Master:', isMaster);
         
-        // Exibir nome do usuário IMEDIATAMENTE
         if (userNameDisplay) {
             userNameDisplay.textContent = '👤 ' + (currentUser.nome || currentUser.usuario);
         }
         
-        // Badge master
         if (isMaster) {
             if (masterBadge) masterBadge.style.display = 'inline';
             if (menuBase) menuBase.style.display = 'block';
             if (menuHistorico) menuHistorico.style.display = 'block';
         }
         
-        // Carregar contagens primeiro (rápido, localStorage)
         loadContagens();
         
-        // Metadados
         const meta = Database.loadBaseMeta();
         if (meta && !state.baseMeta) state.baseMeta = meta;
         
-        // Renderizar interface imediatamente
-        atualizarInfoImportacao();
         renderizarHistorico();
         renderizarDashboard();
         atualizarEstatisticas();
         atualizarBaseInfo();
         
-        // Conectar ao Supabase
         console.log('🔌 Conectando ao Supabase...');
         const dbOk = Database.init();
         state.dbConnected = dbOk;
@@ -124,24 +112,21 @@
                 await syncPendingContagens();
             } else {
                 console.warn('⚠️ Falha no teste de conexão');
-                if (importInfo) importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Supabase offline - verificando...</span>';
             }
         } else {
             console.warn('⚠️ Database.init() falhou');
-            if (importInfo) importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Modo offline</span>';
         }
         
-        // Dark mode
+        atualizarInfoImportacao();
+        atualizarBaseInfo();
+        
         if (localStorage.getItem('blmez_darkmode') === '1') {
             document.body.classList.add('dark-mode');
             const darkBtn = $('#menuDarkMode');
             if (darkBtn) darkBtn.textContent = '☀️ Modo Claro';
         }
         
-        // Configurar eventos
         setupEventListeners();
-        
-        // Abrir seção padrão
         abrirSecao('contagem');
         
         console.log('✅ Pronto!');
@@ -191,7 +176,7 @@
         
         if (nome === 'historico') renderizarHistorico();
         if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
-        if (nome === 'base') atualizarBaseInfo();
+        if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
         
         fecharSidebar();
     }
@@ -219,12 +204,9 @@
                 
                 console.log('✅ ' + produtos.length + ' produtos carregados');
                 Utils.showToast('✅ ' + produtos.length.toLocaleString('pt-BR') + ' produtos carregados', 'success');
-            } else {
-                if (importInfo) importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Base vazia</span>';
             }
         } catch (err) {
             console.error('❌ Erro:', err.message);
-            if (importInfo) importInfo.innerHTML = '<span style="color:var(--red);">❌ ' + Utils.escapeHTML(err.message) + '</span>';
         }
     }
     
@@ -315,7 +297,7 @@
     function atualizarInfoImportacao() {
         if (!importInfo) return;
         if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) {
-            importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada.</span>';
+            importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada. Importe um arquivo TXT.</span>';
             return;
         }
         const dh = Utils.formatDataHora(state.baseMeta.dataHoraImportacao);
@@ -323,7 +305,7 @@
             '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span> ' +
             '<span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span> ' +
             '<span>📅 ' + dh.data + ' ' + dh.hora + '</span> ' +
-            '<span class="badge">☁️ Supabase</span>';
+            '<span class="badge">☁️ ' + (state.dbConnected ? 'Supabase' : 'Local') + '</span>';
     }
     
     function atualizarBaseInfo() {
@@ -557,7 +539,6 @@
         
         $('#menuLogout')?.addEventListener('click', () => { if (confirm('Sair?')) Auth.logout(); });
         
-        // Importação
         if (importZoneMaster && fileInputMaster) {
             importZoneMaster.addEventListener('click', () => fileInputMaster.click());
             fileInputMaster.addEventListener('change', async (e) => {
@@ -582,7 +563,6 @@
         
         btnRecarregarBase?.addEventListener('click', carregarBaseDoSupabase);
         
-        // Pesquisa
         if (inputCodigo) {
             inputCodigo.addEventListener('change', () => pesquisarEAtualizar(inputCodigo.value));
             inputCodigo.addEventListener('keydown', (e) => {
@@ -609,7 +589,6 @@
             }
         }
         
-        // Salvar
         btnSalvar?.addEventListener('click', async () => {
             const rua = inputRua?.value.trim() || '';
             const faixa = parseInt(inputFaixa?.value) || 0;
@@ -649,7 +628,6 @@
             if (inputRua) inputRua.focus();
         });
         
-        // Câmera
         btnCamera?.addEventListener('click', () => {
             if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; }
             else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigo) => { if (inputCodigo) inputCodigo.value = codigo; pesquisarEAtualizar(codigo); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); }
@@ -660,12 +638,10 @@
             if (modoCameraLabel) modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO';
         });
         
-        // Duplicidade
         $('#btnEditarExistente')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar'); });
         $('#btnSomarQuantidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar'); });
         $('#btnCancelarDuplicidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; state.resolvendoDuplicidade = null; });
         
-        // Exportação
         btnExportCSV?.addEventListener('click', () => {
             if (!isMaster) { Utils.showToast('Acesso restrito', 'error'); return; }
             const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data || '', Hora: c.hora || '', Observações: c.observacoes || '' }));
@@ -685,7 +661,6 @@
             XLSX.writeFile(wb, 'contagem_' + new Date().toISOString().slice(0, 10) + '.xlsx');
         });
         
-        // Filtros e ordenação
         [filtroRua, filtroFaixa, filtroCodigo, filtroDescricao].forEach(i => i?.addEventListener('input', renderizarHistorico));
         $$('thead th[data-sort]').forEach(th => th.addEventListener('click', () => {
             const col = th.dataset.sort;
@@ -694,14 +669,12 @@
             renderizarHistorico();
         }));
         
-        // Atalhos
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; }
             if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); btnSalvar?.click(); }
             if (e.key === 'Enter' && document.activeElement === inputQuantidade) { e.preventDefault(); btnSalvar?.click(); }
         });
         
-        // Online/Offline
         window.addEventListener('online', async () => {
             Utils.showToast('🌐 Online!', 'success');
             state.dbConnected = true;
@@ -719,6 +692,5 @@
         });
     }
     
-    // Iniciar
     init();
 })();

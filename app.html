@@ -54,14 +54,10 @@
 
         <!-- MAIN CONTENT -->
         <main class="main-content">
-            <!-- CONTAGEM -->
+            <!-- SEÇÃO: CONTAGEM -->
             <section class="section-content active" id="secaoContagem">
                 <div class="container">
-                    <div class="card">
-                        <div class="card-header"><span class="icon">📦</span> Status da Base</div>
-                        <div class="import-info" id="importInfo">Carregando...</div>
-                    </div>
-                    
+                    <!-- Formulário de Contagem -->
                     <div class="card">
                         <div class="card-header"><span class="icon">🔢</span> Contagem de Estoque</div>
                         <div class="form-grid">
@@ -87,11 +83,18 @@
                 </div>
             </section>
 
-            <!-- BASE (MASTER) -->
+            <!-- SEÇÃO: BASE (APENAS MASTER) -->
             <section class="section-content" id="secaoBase">
                 <div class="container">
+                    <!-- Status da Base -->
                     <div class="card">
-                        <div class="card-header"><span class="icon">📂</span> Gerenciar Base de Produtos</div>
+                        <div class="card-header"><span class="icon">📦</span> Status da Base</div>
+                        <div class="import-info" id="importInfo">Carregando...</div>
+                    </div>
+
+                    <!-- Importação -->
+                    <div class="card">
+                        <div class="card-header"><span class="icon">📂</span> Importar Nova Base</div>
                         <p style="margin-bottom:12px;color:var(--text-secondary);">
                             Ao importar um novo arquivo TXT, a base atual será <strong>totalmente substituída</strong> no Supabase.
                         </p>
@@ -112,7 +115,7 @@
                 </div>
             </section>
 
-            <!-- HISTÓRICO (MASTER) -->
+            <!-- SEÇÃO: HISTÓRICO (APENAS MASTER) -->
             <section class="section-content" id="secaoHistorico">
                 <div class="container">
                     <div class="card">
@@ -150,7 +153,7 @@
                 </div>
             </section>
 
-            <!-- DASHBOARD -->
+            <!-- SEÇÃO: DASHBOARD -->
             <section class="section-content" id="secaoDashboard">
                 <div class="container">
                     <div class="stats-grid" id="dashboardStats">
