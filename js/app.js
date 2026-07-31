@@ -600,51 +600,66 @@
         }
         
         // ============ FUNÇÃO PRINCIPAL: Processar código digitado/bipado ============
-        function processarCodigo(codigoDigitado) {
-            if (!codigoDigitado?.trim()) {
-                if (inputDescricao) inputDescricao.value = '';
-                if (inputEmbalagem) inputEmbalagem.value = '';
-                return;
-            }
-            
-            if (!state.produtosMapCodAcesso.size) {
-                Utils.showToast('⚠️ Base vazia', 'error');
-                return;
-            }
-            
-            // Pesquisar o produto pelo código digitado/bipado
-            const produto = pesquisarProduto(codigoDigitado);
-            
-            if (produto) {
-                // Preencher descrição e embalagem
-                if (inputDescricao) inputDescricao.value = produto.descCompleta;
-                if (inputEmbalagem) inputEmbalagem.value = produto.embalagemFormatada;
-                
-                // ⚡ AQUI ESTÁ A MÁGICA: Substituir o código digitado pelo SEQPRODUTO
-                // Se foi bipado DUN/EAN (codacesso), troca pelo seqproduto
-                if (inputCodigo) {
-                    inputCodigo.value = produto.seqProduto || codigoDigitado;
-                }
-                
-                // Feedback visual
-                if (inputCodigo) inputCodigo.classList.add('input-success');
-                setTimeout(() => inputCodigo?.classList.remove('input-success'), 1500);
-                
-                Utils.playBeep();
-                Utils.vibrate(40);
-                
-                console.log('🔍 Código original:', codigoDigitado);
-                console.log('📦 SEQPRODUTO salvo:', produto.seqProduto);
-                console.log('📝 Descrição:', produto.descCompleta);
-            } else {
-                // Produto não encontrado
-                if (inputDescricao) inputDescricao.value = '';
-                if (inputEmbalagem) inputEmbalagem.value = '';
-                if (inputCodigo) inputCodigo.classList.add('input-error');
-                setTimeout(() => inputCodigo?.classList.remove('input-error'), 1500);
-                Utils.showToast('❌ Não encontrado', 'error');
-            }
+function processarCodigo(codigoDigitado) {
+    if (!codigoDigitado?.trim()) {
+        if (inputDescricao) inputDescricao.value = '';
+        if (inputEmbalagem) inputEmbalagem.value = '';
+        return;
+    }
+    
+    if (!state.produtosMapCodAcesso.size) {
+        Utils.showToast('⚠️ Base vazia', 'error');
+        return;
+    }
+    
+    // Limpar o código digitado (remover espaços)
+    const codigoLimpo = codigoDigitado.trim();
+    
+    // Pesquisar o produto pelo código (busca primeiro em CODACESSO, depois em SEQPRODUTO)
+    const produto = pesquisarProduto(codigoLimpo);
+    
+    if (produto) {
+        // Preencher descrição e embalagem
+        if (inputDescricao) inputDescricao.value = produto.descCompleta;
+        if (inputEmbalagem) inputEmbalagem.value = produto.embalagemFormatada;
+        
+        // ⚡ SUBSTITUIR o código pelo SEQPRODUTO
+        // Só substitui se o código original for diferente do seqproduto
+        // (ou seja, se foi bipado pelo codacesso)
+        const codigoFinal = produto.seqProduto || codigoLimpo;
+        
+        if (inputCodigo) {
+            inputCodigo.value = codigoFinal;
         }
+        
+        // Feedback visual
+        if (inputCodigo) {
+            inputCodigo.classList.add('input-success');
+            setTimeout(() => {
+                if (inputCodigo) inputCodigo.classList.remove('input-success');
+            }, 1500);
+        }
+        
+        Utils.playBeep();
+        Utils.vibrate(40);
+        
+        console.log('🔍 Código original bipado:', codigoLimpo);
+        console.log('📦 SEQPRODUTO (salvo na contagem):', codigoFinal);
+        console.log('📝 Descrição:', produto.descCompleta);
+        
+    } else {
+        // Produto não encontrado
+        if (inputDescricao) inputDescricao.value = '';
+        if (inputEmbalagem) inputEmbalagem.value = '';
+        if (inputCodigo) {
+            inputCodigo.classList.add('input-error');
+            setTimeout(() => {
+                if (inputCodigo) inputCodigo.classList.remove('input-error');
+            }, 1500);
+        }
+        Utils.showToast('❌ Produto não encontrado na base', 'error');
+    }
+}
         
         btnSalvar?.addEventListener('click', async () => {
             const rua = inputRua?.value.trim() || '';
@@ -706,21 +721,29 @@
         });
         
         btnCamera?.addEventListener('click', () => {
-            if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; }
-            else {
-                if (modalCamera) modalCamera.style.display = 'flex';
-                Camera.open(cameraVideo, (codigoLido) => {
-                    // Código lido pela câmera (DUN/EAN)
-                    console.log('📷 Código lido pela câmera:', codigoLido);
-                    
-                    // Coloca o código no campo e processa
-                    if (inputCodigo) inputCodigo.value = codigoLido;
-                    processarCodigo(codigoLido);
-                    
-                    if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none';
-                });
+    if (Camera.isOpen) {
+        Camera.close();
+        if (modalCamera) modalCamera.style.display = 'none';
+    } else {
+        if (modalCamera) modalCamera.style.display = 'flex';
+        Camera.open(cameraVideo, (codigoLido) => {
+            // Código lido pela câmera (DUN/EAN do CODACESSO)
+            console.log('📷 Código lido pela câmera:', codigoLido);
+            
+            // Coloca o código no campo temporariamente e processa
+            if (inputCodigo) {
+                inputCodigo.value = codigoLido;
+            }
+            
+            // Processa o código (vai substituir pelo SEQPRODUTO)
+            processarCodigo(codigoLido);
+            
+            if (!Camera.continuousMode && modalCamera) {
+                modalCamera.style.display = 'none';
             }
         });
+    }
+});
         btnFecharCamera?.addEventListener('click', () => { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; });
         btnCameraContinuo?.addEventListener('click', () => {
             const cont = Camera.toggleContinuous();
