@@ -130,7 +130,7 @@
         if (localStorage.getItem('blmez_darkmode') === '1') {
             document.body.classList.add('dark-mode');
             const darkBtn = $('#menuDarkMode');
-            if (darkBtn) darkBtn.textContent = '☀️ Modo Claro';
+            if (darkBtn) darkBtn.textContent = '☀️ Light Mode';
         }
         
         setupEventListeners();
@@ -153,7 +153,7 @@
         if (sidebarOverlay) sidebarOverlay.classList.remove('open');
     }
     
-    function abrirSecao(nome) {
+function abrirSecao(nome) {
     ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.remove('active');
@@ -172,13 +172,28 @@
         if (item.dataset.section === nome) item.classList.add('active');
     });
     
-    // Forçar renderização ao abrir cada aba
-    setTimeout(() => {
-        if (nome === 'historico') renderizarHistorico();
-        if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
-        if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
+    // Ações ao abrir cada aba
+    setTimeout(async () => {
+        if (nome === 'historico') {
+            // Sincronizar com Supabase antes de mostrar
+            if (Database.supabase && navigator.onLine) {
+                await syncFromSupabase();
+            }
+            renderizarHistorico();
+        }
+        if (nome === 'dashboard') {
+            if (Database.supabase && navigator.onLine) {
+                await syncFromSupabase();
+            }
+            renderizarDashboard();
+            atualizarEstatisticas();
+        }
+        if (nome === 'base') {
+            atualizarInfoImportacao();
+            atualizarBaseInfo();
+        }
         if (nome === 'usuarios') renderizarUsuarios();
-    }, 100);
+    }, 200);
     
     fecharSidebar();
 }
@@ -418,6 +433,49 @@
         }
     }
     
+    // ============ SINCRONIZAR DO SUPABASE ============
+async function syncFromSupabase() {
+    if (!Database.supabase) return;
+    
+    try {
+        console.log('🔄 Buscando contagens do Supabase...');
+        const remotas = await Database.fetchContagens();
+        
+        if (remotas && remotas.length > 0) {
+            // Converter para o formato local
+            const remoteMapped = remotas.map(c => ({
+                localId: 'remote_' + c.id,
+                supabase_id: c.id,
+                rua: c.rua,
+                codigo: c.codigo,
+                descricao: c.descricao,
+                embalagem: c.embalagem,
+                quantidade: c.quantidade,
+                observacoes: c.observacoes || '',
+                data: c.data,
+                hora: c.hora,
+                dataISO: c.created_at,
+                synced: true,
+                usuario: c.usuario || '',
+                usuarioNome: c.usuario_nome || ''
+            }));
+            
+            // Mesclar com dados locais
+            const merged = [...remoteMapped];
+            for (const local of state.contagensLocal) {
+                if (!local.synced && !merged.find(m => m.localId === local.localId)) {
+                    merged.push(local);
+                }
+            }
+            
+            state.contagensLocal = merged;
+            saveContagens();
+            console.log('✅ Sincronizado do Supabase:', remoteMapped.length, 'contagens');
+        }
+    } catch (err) {
+        console.warn('⚠️ Não foi possível sincronizar:', err.message);
+    }
+}
     // ============ EVENTOS ============
     function setupEventListeners() {
         if (hamburgerBtn) hamburgerBtn.addEventListener('click', abrirSidebar);
@@ -426,7 +484,7 @@
         $$('.sidebar-item[data-section]').forEach(item => item.addEventListener('click', () => abrirSecao(item.dataset.section)));
         
         const darkBtn = $('#menuDarkMode');
-        if (darkBtn) darkBtn.addEventListener('click', () => { document.body.classList.toggle('dark-mode'); localStorage.setItem('blmez_darkmode', document.body.classList.contains('dark-mode')?'1':'0'); darkBtn.textContent = document.body.classList.contains('dark-mode')?'☀️ Modo Claro':'🌓 Modo Escuro'; });
+        if (darkBtn) darkBtn.addEventListener('click', () => { document.body.classList.toggle('dark-mode'); localStorage.setItem('blmez_darkmode', document.body.classList.contains('dark-mode')?'1':'0'); darkBtn.textContent = document.body.classList.contains('dark-mode')?'☀️ Light Mode':'🌓 Dark Mode'; });
         
         $('#menuSync')?.addEventListener('click', async () => { await syncPendingContagens(); Utils.showToast('✅ Sincronizado!','success'); });
         $('#menuBackup')?.addEventListener('click', () => { if (!state.contagensLocal.length) return; Utils.downloadBlob(new Blob([JSON.stringify(state.contagensLocal)],{type:'application/json'}),'backup_'+new Date().toISOString().slice(0,10)+'.json'); });
