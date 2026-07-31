@@ -1,5 +1,5 @@
 // ============================================================
-// AUTH.JS - Autenticação (Offline First + Supabase)
+// AUTH.JS - Autenticação (Offline First + Supabase Sync)
 // ============================================================
 
 const Auth = {
@@ -18,6 +18,7 @@ const Auth = {
     
     init() {
         this._garantirMasterLocal();
+        this._syncFromSupabase();
     },
     
     _garantirMasterLocal() {
@@ -26,6 +27,24 @@ const Auth = {
             users.push({ ...this.MASTER_USER });
             localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(users));
         }
+    },
+    
+    async _syncFromSupabase() {
+        if (!Database.supabase) return;
+        try {
+            const { data, error } = await Database.supabase
+                .from('usuarios')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
+            if (!error && data && data.length > 0) {
+                let merged = [...data];
+                if (!merged.find(u => u.usuario === this.MASTER_USER.usuario)) {
+                    merged.push({ ...this.MASTER_USER });
+                }
+                localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(merged));
+            }
+        } catch (e) {}
     },
     
     _getLocalUsers() {
@@ -48,50 +67,53 @@ const Auth = {
     },
     
     async getAllUsers() {
-        let users = this._getLocalUsers();
-        
-        if (Database.supabase) {
-            try {
-                const { data, error } = await Database.supabase
-                    .from('usuarios')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-                
-                if (!error && data && data.length > 0) {
-                    const merged = [...data];
-                    if (!merged.find(u => u.usuario === this.MASTER_USER.usuario)) {
-                        merged.push({ ...this.MASTER_USER });
-                    }
-                    this._saveLocalUsers(merged);
-                    return merged;
-                }
-            } catch (e) {
-                console.warn('Supabase indisponível, usando dados locais');
-            }
-        }
-        
-        return users;
+        await this._syncFromSupabase();
+        return this._getLocalUsers();
     },
     
-    async saveUser(userData) {
-        let users = this._getLocalUsers();
+    async saveUserToSupabase(userData) {
+        if (!Database.supabase) return;
+        try {
+            await Database.supabase.from('usuarios').insert([{
+                nome: userData.nome,
+                usuario: userData.usuario,
+                senha: userData.senha,
+                role: userData.role || 'user',
+                ativo: true
+            }]);
+            console.log('✅ Usuário salvo no Supabase');
+        } catch (e) {
+            console.warn('⚠️ Erro ao salvar no Supabase:', e.message);
+        }
+    },
+    
+    cadastrar(nome, usuario, senha) {
+        if (!nome || nome.trim().length < 3) return { sucesso: false, mensagem: 'Nome deve ter pelo menos 3 caracteres.' };
+        if (!usuario || usuario.trim().length < 4) return { sucesso: false, mensagem: 'Usuário deve ter pelo menos 4 caracteres.' };
+        if (!senha || senha.trim().length < 4) return { sucesso: false, mensagem: 'Senha deve ter pelo menos 4 caracteres.' };
+        
+        const users = this._getLocalUsers();
+        if (users.find(u => u.usuario === usuario.trim())) {
+            return { sucesso: false, mensagem: 'Este nome de usuário já está em uso.' };
+        }
+        
         const newUser = {
-            ...userData,
+            nome: nome.trim(),
+            usuario: usuario.trim(),
+            senha: senha.trim(),
+            role: 'user',
+            ativo: true,
             id: Date.now(),
             created_at: new Date().toISOString()
         };
+        
         users.push(newUser);
         this._saveLocalUsers(users);
         
-        if (Database.supabase) {
-            try {
-                await Database.supabase.from('usuarios').insert([userData]);
-            } catch (e) {
-                console.warn('Salvo localmente, Supabase indisponível');
-            }
-        }
+        // Salvar no Supabase
+        this.saveUserToSupabase(newUser);
         
-        return { sucesso: true, id: newUser.id };
+        return { sucesso: true, mensagem: 'Cadastro realizado com sucesso!' };
     },
     
     async updateUser(usuario, updates) {
@@ -129,63 +151,14 @@ const Auth = {
         return { sucesso: true };
     },
     
-    cadastrar(nome, usuario, senha) {
-        if (!nome || nome.trim().length < 3) {
-            return { sucesso: false, mensagem: 'Nome deve ter pelo menos 3 caracteres.' };
-        }
-        if (!usuario || usuario.trim().length < 4) {
-            return { sucesso: false, mensagem: 'Usuário deve ter pelo menos 4 caracteres.' };
-        }
-        if (!senha || senha.trim().length < 4) {
-            return { sucesso: false, mensagem: 'Senha deve ter pelo menos 4 caracteres.' };
-        }
-        
-        const users = this._getLocalUsers();
-        if (users.find(u => u.usuario === usuario.trim())) {
-            return { sucesso: false, mensagem: 'Este nome de usuário já está em uso.' };
-        }
-        
-        const newUser = {
-            nome: nome.trim(),
-            usuario: usuario.trim(),
-            senha: senha.trim(),
-            role: 'user',
-            ativo: true,
-            id: Date.now(),
-            created_at: new Date().toISOString()
-        };
-        
-        users.push(newUser);
-        this._saveLocalUsers(users);
-        
-        if (Database.supabase) {
-            Database.supabase.from('usuarios').insert([{
-                nome: nome.trim(),
-                usuario: usuario.trim(),
-                senha: senha.trim(),
-                role: 'user',
-                ativo: true
-            }]).then(() => {}).catch(() => {});
-        }
-        
-        return { sucesso: true, mensagem: 'Cadastro realizado com sucesso!' };
-    },
-    
     login(usuario, senha) {
-        if (!usuario || !senha) {
-            return { sucesso: false, mensagem: 'Preencha todos os campos.' };
-        }
+        if (!usuario || !senha) return { sucesso: false, mensagem: 'Preencha todos os campos.' };
         
         const users = this._getLocalUsers();
         const user = users.find(u => u.usuario === usuario.trim() && u.senha === senha.trim());
         
-        if (!user) {
-            return { sucesso: false, mensagem: 'Usuário ou senha incorretos.' };
-        }
-        
-        if (user.ativo === false) {
-            return { sucesso: false, mensagem: 'Usuário desativado. Contate o administrador.' };
-        }
+        if (!user) return { sucesso: false, mensagem: 'Usuário ou senha incorretos.' };
+        if (user.ativo === false) return { sucesso: false, mensagem: 'Usuário desativado.' };
         
         const sessionData = {
             nome: user.nome,
@@ -207,9 +180,7 @@ const Auth = {
         try {
             const session = localStorage.getItem(this.STORAGE_KEY);
             return session ? JSON.parse(session) : null;
-        } catch (e) {
-            return null;
-        }
+        } catch (e) { return null; }
     },
     
     isMaster() {
@@ -223,10 +194,7 @@ const Auth = {
     
     checkAccess() {
         const user = this.isLoggedIn();
-        if (!user) {
-            window.location.href = 'index.html';
-            return null;
-        }
+        if (!user) { window.location.href = 'index.html'; return null; }
         return user;
     }
 };

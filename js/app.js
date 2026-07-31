@@ -14,6 +14,7 @@
     const sidebarClose = $('#sidebarClose');
     const menuBase = $('#menuBase');
     const menuHistorico = $('#menuHistorico');
+    const menuUsuarios = $('#menuUsuarios');
     const userNameDisplay = $('#userNameDisplay');
     const masterBadge = $('#masterBadge');
     const connectionDot = $('#connectionDot');
@@ -57,6 +58,13 @@
     const restoreFileInput = $('#restoreFileInput');
     const btnExportCSV = $('#btnExportCSV');
     const btnExportExcel = $('#btnExportExcel');
+    const tabelaUsuarios = $('#tabelaUsuarios');
+    const nenhumUsuario = $('#nenhumUsuario');
+    const btnAddUser = $('#btnAddUser');
+    const novoNome = $('#novoNome');
+    const novoUsuario = $('#novoUsuario');
+    const novaSenha = $('#novaSenha');
+    const novoRole = $('#novoRole');
     
     const state = {
         produtosMapCodAcesso: new Map(),
@@ -67,7 +75,8 @@
         sortColumn: null,
         sortDirection: 'asc',
         resolvendoDuplicidade: null,
-        dbConnected: false
+        dbConnected: false,
+        salvandoContagem: false
     };
     
     // ============ INICIALIZAÇÃO ============
@@ -83,6 +92,7 @@
             if (masterBadge) masterBadge.style.display = 'inline';
             if (menuBase) menuBase.style.display = 'block';
             if (menuHistorico) menuHistorico.style.display = 'block';
+            if (menuUsuarios) menuUsuarios.style.display = 'block';
         }
         
         loadContagens();
@@ -110,11 +120,7 @@
                 console.log('✅ Conectado! Carregando base...');
                 await carregarBaseDoSupabase();
                 await syncPendingContagens();
-            } else {
-                console.warn('⚠️ Falha no teste de conexão');
             }
-        } else {
-            console.warn('⚠️ Database.init() falhou');
         }
         
         atualizarInfoImportacao();
@@ -130,15 +136,11 @@
         abrirSecao('contagem');
         
         console.log('✅ Pronto!');
-        console.log('   DB:', state.dbConnected ? 'Online' : 'Offline');
-        console.log('   Produtos:', state.produtosMapCodAcesso.size);
-        console.log('   Contagens:', state.contagensLocal.length);
     }
     
     function updateConnectionDot() {
         if (connectionDot) {
             connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
-            connectionDot.title = state.dbConnected ? 'Supabase Online' : 'Supabase Offline';
         }
     }
     
@@ -154,7 +156,7 @@
     }
     
     function abrirSecao(nome) {
-        ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard'].forEach(id => {
+        ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.classList.remove('active');
         });
@@ -163,7 +165,8 @@
             contagem: 'secaoContagem',
             base: 'secaoBase',
             historico: 'secaoHistorico',
-            dashboard: 'secaoDashboard'
+            dashboard: 'secaoDashboard',
+            usuarios: 'secaoUsuarios'
         };
         
         const secao = document.getElementById(mapa[nome]);
@@ -177,6 +180,7 @@
         if (nome === 'historico') renderizarHistorico();
         if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
         if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
+        if (nome === 'usuarios') renderizarUsuarios();
         
         fecharSidebar();
     }
@@ -184,46 +188,24 @@
     // ============ BASE DE PRODUTOS ============
     async function carregarBaseDoSupabase() {
         if (!Database.supabase) return;
-        
         try {
-            console.log('🔄 Carregando base...');
             const produtos = await Database.fetchProdutos();
-            
             if (produtos && produtos.length > 0) {
                 construirIndices(produtos);
-                
-                state.baseMeta = {
-                    nomeArquivo: 'Supabase',
-                    totalRegistros: produtos.length,
-                    dataHoraImportacao: new Date().toISOString()
-                };
-                
+                state.baseMeta = { nomeArquivo: 'Supabase', totalRegistros: produtos.length, dataHoraImportacao: new Date().toISOString() };
                 Database.saveBaseMeta(state.baseMeta);
                 atualizarInfoImportacao();
                 atualizarBaseInfo();
-                
-                console.log('✅ ' + produtos.length + ' produtos carregados');
-                Utils.showToast('✅ ' + produtos.length.toLocaleString('pt-BR') + ' produtos carregados', 'success');
             }
-        } catch (err) {
-            console.error('❌ Erro:', err.message);
-        }
+        } catch (err) {}
     }
     
     function construirIndices(produtos) {
         state.produtosMapCodAcesso.clear();
         state.produtosMapSeqProduto.clear();
-        
         for (const p of produtos) {
             const emb = p.embalagem && p.qtdembalagem ? p.embalagem + ' x ' + p.qtdembalagem : (p.embalagem || p.qtdembalagem || '');
-            const prod = {
-                seqProduto: p.seqproduto || '',
-                descCompleta: p.desccompleta || '',
-                codAcesso: p.codacesso || '',
-                embalagem: p.embalagem || '',
-                qtdEmbalagem: p.qtdembalagem || '',
-                embalagemFormatada: emb
-            };
+            const prod = { seqProduto: p.seqproduto || '', descCompleta: p.desccompleta || '', codAcesso: p.codacesso || '', embalagem: p.embalagem || '', qtdEmbalagem: p.qtdembalagem || '', embalagemFormatada: emb };
             if (prod.codAcesso) state.produtosMapCodAcesso.set(prod.codAcesso, prod);
             if (prod.seqProduto) state.produtosMapSeqProduto.set(prod.seqProduto, prod);
         }
@@ -231,64 +213,31 @@
     
     async function importarBaseMaster(conteudo, nomeArquivo) {
         if (!Database.supabase) { Utils.showToast('❌ Offline', 'error'); return; }
-        
         progressBarMaster.classList.add('active');
-        progressFillMaster.style.width = '0%';
-        importStatusMaster.textContent = 'Processando...';
-        
         try {
             const linhas = conteudo.split(/\r?\n/).filter(l => l.trim());
             if (!linhas.length) throw new Error('Vazio');
-            
             const delimitadores = ['\t', ';', ','];
             let del = '\t', max = 0;
             delimitadores.forEach(d => { const c = linhas[0].split(d).length; if (c > max) { max = c; del = d; } });
-            
             const cab = linhas[0].split(del);
             const inicio = cab.some(c => /seqproduto|codacesso/i.test(c)) ? 1 : 0;
             if (cab.length < 9) throw new Error('9 colunas necessárias');
-            
             const arr = [];
             for (let i = inicio; i < linhas.length; i++) {
                 const cols = linhas[i].split(del);
                 if (cols.length < 9) continue;
-                arr.push({
-                    seqproduto: (cols[1]||'').trim(),
-                    desccompleta: (cols[2]||'').trim(),
-                    codacesso: (cols[3]||'').trim(),
-                    embalagem: (cols[7]||'').trim(),
-                    qtdembalagem: (cols[8]||'').trim()
-                });
+                arr.push({ seqproduto: (cols[1]||'').trim(), desccompleta: (cols[2]||'').trim(), codacesso: (cols[3]||'').trim(), embalagem: (cols[7]||'').trim(), qtdembalagem: (cols[8]||'').trim() });
             }
-            
-            importStatusMaster.textContent = 'Enviando ' + arr.length + ' produtos...';
-            
-            await Database.replaceProdutos(arr, (p) => {
-                progressFillMaster.style.width = p + '%';
-                importStatusMaster.textContent = 'Enviando... ' + p + '%';
-            });
-            
-            construirIndices(arr.map(p => ({
-                seqproduto: p.seqproduto, desccompleta: p.desccompleta,
-                codacesso: p.codacesso, embalagem: p.embalagem, qtdembalagem: p.qtdembalagem
-            })));
-            
-            state.baseMeta = {
-                nomeArquivo,
-                totalRegistros: state.produtosMapCodAcesso.size,
-                dataHoraImportacao: new Date().toISOString()
-            };
-            
+            await Database.replaceProdutos(arr, (p) => { progressFillMaster.style.width = p + '%'; });
+            construirIndices(arr.map(p => ({ seqproduto: p.seqproduto, desccompleta: p.desccompleta, codacesso: p.codacesso, embalagem: p.embalagem, qtdembalagem: p.qtdembalagem })));
+            state.baseMeta = { nomeArquivo, totalRegistros: state.produtosMapCodAcesso.size, dataHoraImportacao: new Date().toISOString() };
             Database.saveBaseMeta(state.baseMeta);
             atualizarInfoImportacao();
             atualizarBaseInfo();
-            
             importStatusMaster.innerHTML = '<span style="color:green">✅ ' + state.produtosMapCodAcesso.size + ' produtos</span>';
-            Utils.showToast('✅ ' + state.produtosMapCodAcesso.size + ' produtos importados!', 'success');
-            
         } catch (err) {
             importStatusMaster.innerHTML = '<span style="color:red">❌ ' + Utils.escapeHTML(err.message) + '</span>';
-            Utils.showToast('❌ ' + err.message, 'error');
         } finally {
             progressBarMaster.classList.remove('active');
         }
@@ -297,43 +246,24 @@
     function atualizarInfoImportacao() {
         if (!importInfo) return;
         if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) {
-            importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada. Importe um arquivo TXT.</span>';
+            importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada.</span>';
             return;
         }
         const dh = Utils.formatDataHora(state.baseMeta.dataHoraImportacao);
-        importInfo.innerHTML =
-            '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span> ' +
-            '<span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span> ' +
-            '<span>📅 ' + dh.data + ' ' + dh.hora + '</span> ' +
-            '<span class="badge">☁️ ' + (state.dbConnected ? 'Supabase' : 'Local') + '</span>';
+        importInfo.innerHTML = '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span> <span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span> <span>📅 ' + dh.data + ' ' + dh.hora + '</span> <span class="badge">☁️ ' + (state.dbConnected ? 'Supabase' : 'Local') + '</span>';
     }
     
     function atualizarBaseInfo() {
         if (baseInfo) baseInfo.textContent = state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' produtos na base';
     }
     
-    // ============ PESQUISA DE PRODUTOS ============
-    // Retorna o produto completo (incluindo seqProduto)
+    // ============ PESQUISA ============
     function pesquisarProduto(codigo) {
         if (!codigo?.trim()) return null;
         const c = codigo.trim();
-        
-        // Busca exata por CODACESSO (DUN/EAN bipado)
         if (state.produtosMapCodAcesso.has(c)) return state.produtosMapCodAcesso.get(c);
-        
-        // Busca exata por SEQPRODUTO
         if (state.produtosMapSeqProduto.has(c)) return state.produtosMapSeqProduto.get(c);
-        
-        // Busca parcial (começa com) em CODACESSO
-        for (const [k, v] of state.produtosMapCodAcesso) {
-            if (k.startsWith(c)) return v;
-        }
-        
-        // Busca parcial em SEQPRODUTO
-        for (const [k, v] of state.produtosMapSeqProduto) {
-            if (k.startsWith(c)) return v;
-        }
-        
+        for (const [k, v] of state.produtosMapCodAcesso) if (k.startsWith(c)) return v;
         return null;
     }
     
@@ -383,24 +313,15 @@
         for (const c of [...state.pendingContagens]) {
             try {
                 const res = await Database.saveContagem({
-                    rua: c.rua,
-                    faixa: c.faixa,
-                    codigo: c.codigo,
-                    descricao: c.descricao,
-                    embalagem: c.embalagem,
-                    quantidade: c.quantidade,
-                    observacoes: c.observacoes || '',
-                    data: c.data,
-                    hora: c.hora,
-                    usuario: c.usuario || '',
-                    usuario_nome: c.usuarioNome || ''
+                    rua: c.rua, faixa: c.faixa, codigo: c.codigo,
+                    descricao: c.descricao, embalagem: c.embalagem,
+                    quantidade: c.quantidade, observacoes: c.observacoes || '',
+                    data: c.data, hora: c.hora,
+                    usuario: c.usuario || '', usuario_nome: c.usuarioNome || ''
                 });
-                c.synced = true;
-                c.supabase_id = res.id;
+                c.synced = true; c.supabase_id = res.id;
                 state.pendingContagens = state.pendingContagens.filter(x => x.localId !== c.localId);
-            } catch (e) {
-                console.error('Erro ao sincronizar:', e);
-            }
+            } catch (e) {}
         }
         saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
     }
@@ -412,14 +333,8 @@
         if (filtroFaixa?.value.trim()) lista = lista.filter(c => String(c.faixa).includes(filtroFaixa.value.trim()));
         if (filtroCodigo?.value.trim()) lista = lista.filter(c => c.codigo.toLowerCase().includes(filtroCodigo.value.toLowerCase().trim()));
         if (filtroDescricao?.value.trim()) lista = lista.filter(c => c.descricao.toLowerCase().includes(filtroDescricao.value.toLowerCase().trim()));
-        
         if (state.sortColumn) {
-            lista.sort((a, b) => {
-                let va = a[state.sortColumn], vb = b[state.sortColumn];
-                if (typeof va === 'string') va = va.toLowerCase();
-                if (typeof vb === 'string') vb = vb.toLowerCase();
-                return state.sortDirection === 'asc' ? (va < vb ? -1 : 1) : (va > vb ? -1 : 1);
-            });
+            lista.sort((a, b) => { let va = a[state.sortColumn], vb = b[state.sortColumn]; if (typeof va === 'string') va = va.toLowerCase(); if (typeof vb === 'string') vb = vb.toLowerCase(); return state.sortDirection === 'asc' ? (va < vb ? -1 : 1) : (va > vb ? -1 : 1); });
         } else {
             lista.sort((a, b) => new Date(b.dataISO || 0) - new Date(a.dataISO || 0));
         }
@@ -430,33 +345,16 @@
         if (!tabelaHistorico) return;
         const lista = getHistoricoFiltrado();
         tabelaHistorico.innerHTML = '';
-        if (!lista.length) {
-            if (nenhumRegistro) nenhumRegistro.style.display = 'block';
-        } else {
+        if (!lista.length) { if (nenhumRegistro) nenhumRegistro.style.display = 'block'; }
+        else {
             if (nenhumRegistro) nenhumRegistro.style.display = 'none';
             lista.forEach(c => {
                 const tr = document.createElement('tr');
-                tr.innerHTML =
-                    '<td>' + Utils.escapeHTML(c.rua) + '</td>' +
-                    '<td>' + c.faixa + '</td>' +
-                    '<td>' + Utils.escapeHTML(c.codigo) + ' ' + (c.synced ? '☁️' : '📱') + '</td>' +
-                    '<td>' + Utils.escapeHTML(c.descricao) + '</td>' +
-                    '<td>' + Utils.escapeHTML(c.embalagem) + '</td>' +
-                    '<td><strong>' + c.quantidade + '</strong></td>' +
-                    '<td>' + (c.data || '--') + '</td>' +
-                    '<td>' + (c.hora || '--') + '</td>' +
-                    '<td>' + Utils.escapeHTML(c.usuarioNome || c.usuario || '--') + '</td>' +
-                    '<td><button class="btn btn-outline btn-sm btn-editar" data-id="' + c.localId + '">✏️</button> <button class="btn btn-danger-text btn-sm btn-excluir" data-id="' + c.localId + '">🗑️</button></td>';
+                tr.innerHTML = '<td>' + Utils.escapeHTML(c.rua) + '</td><td>' + c.faixa + '</td><td>' + Utils.escapeHTML(c.codigo) + ' ' + (c.synced ? '☁️' : '📱') + '</td><td>' + Utils.escapeHTML(c.descricao) + '</td><td>' + Utils.escapeHTML(c.embalagem) + '</td><td><strong>' + c.quantidade + '</strong></td><td>' + (c.data || '--') + '</td><td>' + (c.hora || '--') + '</td><td>' + Utils.escapeHTML(c.usuarioNome || c.usuario || '--') + '</td><td><button class="btn btn-outline btn-sm btn-editar" data-id="' + c.localId + '">✏️</button> <button class="btn btn-danger-text btn-sm btn-excluir" data-id="' + c.localId + '">🗑️</button></td>';
                 tabelaHistorico.appendChild(tr);
             });
-            tabelaHistorico.querySelectorAll('.btn-editar').forEach(b => b.addEventListener('click', function() {
-                const i = state.contagensLocal.findIndex(c => c.localId === this.dataset.id);
-                if (i >= 0) editarContagem(i);
-            }));
-            tabelaHistorico.querySelectorAll('.btn-excluir').forEach(b => b.addEventListener('click', function() {
-                const i = state.contagensLocal.findIndex(c => c.localId === this.dataset.id);
-                if (i >= 0) excluirContagem(i);
-            }));
+            tabelaHistorico.querySelectorAll('.btn-editar').forEach(b => b.addEventListener('click', function() { const i = state.contagensLocal.findIndex(c => c.localId === this.dataset.id); if (i >= 0) editarContagem(i); }));
+            tabelaHistorico.querySelectorAll('.btn-excluir').forEach(b => b.addEventListener('click', function() { const i = state.contagensLocal.findIndex(c => c.localId === this.dataset.id); if (i >= 0) excluirContagem(i); }));
         }
     }
     
@@ -465,15 +363,13 @@
         const ruas = {};
         state.contagensLocal.forEach(c => {
             if (!ruas[c.rua]) ruas[c.rua] = { itens: 0, paletes: 0, ultima: '' };
-            ruas[c.rua].itens++;
-            ruas[c.rua].paletes += c.quantidade;
+            ruas[c.rua].itens++; ruas[c.rua].paletes += c.quantidade;
             if (!ruas[c.rua].ultima || new Date(c.dataISO) > new Date(ruas[c.rua].ultima)) ruas[c.rua].ultima = c.dataISO;
         });
         tabelaDashboard.innerHTML = '';
         const entradas = Object.entries(ruas);
-        if (!entradas.length) {
-            if (nenhumDashboard) nenhumDashboard.style.display = 'block';
-        } else {
+        if (!entradas.length) { if (nenhumDashboard) nenhumDashboard.style.display = 'block'; }
+        else {
             if (nenhumDashboard) nenhumDashboard.style.display = 'none';
             entradas.forEach(([rua, dados]) => {
                 const dh = dados.ultima ? Utils.formatDataHora(dados.ultima) : { data: '--', hora: '--' };
@@ -513,9 +409,41 @@
         if (statItens) statItens.textContent = state.contagensLocal.length.toLocaleString('pt-BR');
         if (statPaletes) statPaletes.textContent = state.contagensLocal.reduce((s, c) => s + (c.quantidade || 0), 0).toLocaleString('pt-BR');
         if (statProdutos) statProdutos.textContent = new Set(state.contagensLocal.map(c => c.codigo)).size.toLocaleString('pt-BR');
-        if (statUltima && state.contagensLocal.length) {
-            const u = state.contagensLocal[state.contagensLocal.length - 1];
-            statUltima.textContent = (u.data || '--') + ' ' + (u.hora || '--');
+        if (statUltima && state.contagensLocal.length) { const u = state.contagensLocal[state.contagensLocal.length - 1]; statUltima.textContent = (u.data || '--') + ' ' + (u.hora || '--'); }
+    }
+    
+    // ============ USUÁRIOS ============
+    async function renderizarUsuarios() {
+        if (!tabelaUsuarios) return;
+        const users = await Auth.getAllUsers();
+        tabelaUsuarios.innerHTML = '';
+        if (!users.length) { if (nenhumUsuario) nenhumUsuario.style.display = 'block'; }
+        else {
+            if (nenhumUsuario) nenhumUsuario.style.display = 'none';
+            users.forEach(u => {
+                const tr = document.createElement('tr');
+                const dataCriacao = u.created_at ? Utils.formatDataHora(u.created_at) : { data: '--', hora: '--' };
+                tr.innerHTML = '<td>' + Utils.escapeHTML(u.nome) + '</td><td>' + Utils.escapeHTML(u.usuario) + '</td><td><span class="badge" style="background:' + (u.role === 'master' ? '#FFD700' : 'var(--blue-light)') + ';color:' + (u.role === 'master' ? '#000' : 'var(--blue)') + ';">' + (u.role === 'master' ? '👑 Master' : '👤 Usuário') + '</span></td><td>' + (u.ativo !== false ? '🟢 Ativo' : '🔴 Inativo') + '</td><td>' + dataCriacao.data + '</td><td>' + (u.usuario !== '5461448' ? '<button class="btn btn-outline btn-sm btn-toggle-user" data-user="' + u.usuario + '" data-role="' + (u.role === 'master' ? 'user' : 'master') + '">' + (u.role === 'master' ? '⬇ Tornar Usuário' : '⬆ Tornar Master') + '</button> <button class="btn btn-danger-text btn-sm btn-delete-user" data-user="' + u.usuario + '">🗑️</button>' : '<span style="font-size:0.75rem;color:var(--text-muted);">Admin principal</span>') + '</td>';
+                tabelaUsuarios.appendChild(tr);
+            });
+            tabelaUsuarios.querySelectorAll('.btn-toggle-user').forEach(btn => {
+                btn.addEventListener('click', async function() {
+                    if (confirm('Alterar tipo de "' + this.dataset.user + '"?')) {
+                        await Auth.updateUser(this.dataset.user, { role: this.dataset.role });
+                        Utils.showToast('✅ Atualizado!', 'success');
+                        renderizarUsuarios();
+                    }
+                });
+            });
+            tabelaUsuarios.querySelectorAll('.btn-delete-user').forEach(btn => {
+                btn.addEventListener('click', async function() {
+                    if (confirm('Excluir "' + this.dataset.user + '"?')) {
+                        const r = await Auth.deleteUser(this.dataset.user);
+                        if (r.sucesso) { Utils.showToast('✅ Excluído!', 'success'); renderizarUsuarios(); }
+                        else Utils.showToast('❌ ' + r.mensagem, 'error');
+                    }
+                });
+            });
         }
     }
     
@@ -524,15 +452,13 @@
         if (hamburgerBtn) hamburgerBtn.addEventListener('click', abrirSidebar);
         if (sidebarClose) sidebarClose.addEventListener('click', fecharSidebar);
         if (sidebarOverlay) sidebarOverlay.addEventListener('click', fecharSidebar);
-        
         $$('.sidebar-item[data-section]').forEach(item => item.addEventListener('click', () => abrirSecao(item.dataset.section)));
         
         const darkBtn = $('#menuDarkMode');
         if (darkBtn) darkBtn.addEventListener('click', () => {
             document.body.classList.toggle('dark-mode');
-            const isDark = document.body.classList.contains('dark-mode');
-            localStorage.setItem('blmez_darkmode', isDark ? '1' : '0');
-            darkBtn.textContent = isDark ? '☀️ Modo Claro' : '🌓 Modo Escuro';
+            localStorage.setItem('blmez_darkmode', document.body.classList.contains('dark-mode') ? '1' : '0');
+            darkBtn.textContent = document.body.classList.contains('dark-mode') ? '☀️ Modo Claro' : '🌓 Modo Escuro';
         });
         
         $('#menuSync')?.addEventListener('click', async () => { await syncPendingContagens(); Utils.showToast('✅ Sincronizado!', 'success'); });
@@ -543,7 +469,6 @@
             Utils.showToast('Backup OK', 'success');
         });
         $('#menuRestore')?.addEventListener('click', () => restoreFileInput?.click());
-        
         if (restoreFileInput) restoreFileInput.addEventListener('change', (e) => {
             if (!e.target.files[0]) return;
             const reader = new FileReader();
@@ -551,117 +476,86 @@
                 try {
                     const dados = JSON.parse(ev.target.result);
                     if (!Array.isArray(dados)) throw new Error('Inválido');
-                    if (confirm('Restaurar ' + dados.length + ' registros?')) {
-                        state.contagensLocal = dados;
-                        state.pendingContagens = dados.filter(c => !c.synced);
-                        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
-                        Utils.showToast('✅ Restaurado!', 'success');
-                    }
+                    if (confirm('Restaurar ' + dados.length + ' registros?')) { state.contagensLocal = dados; state.pendingContagens = dados.filter(c => !c.synced); saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas(); Utils.showToast('✅ Restaurado!', 'success'); }
                 } catch (err) { Utils.showToast('Arquivo inválido', 'error'); }
             };
-            reader.readAsText(e.target.files[0]);
-            e.target.value = '';
+            reader.readAsText(e.target.files[0]); e.target.value = '';
         });
-        
         $('#menuLogout')?.addEventListener('click', () => { if (confirm('Sair?')) Auth.logout(); });
         
-        if (importZoneMaster && fileInputMaster) {
-            importZoneMaster.addEventListener('click', () => fileInputMaster.click());
-            fileInputMaster.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = async (ev) => await importarBaseMaster(ev.target.result, file.name);
-                reader.readAsText(file);
-                fileInputMaster.value = '';
-            });
-            importZoneMaster.addEventListener('dragover', (e) => { e.preventDefault(); importZoneMaster.classList.add('drag-over'); });
-            importZoneMaster.addEventListener('dragleave', () => importZoneMaster.classList.remove('drag-over'));
-            importZoneMaster.addEventListener('drop', async (e) => {
-                e.preventDefault(); importZoneMaster.classList.remove('drag-over');
-                const file = e.dataTransfer.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = async (ev) => await importarBaseMaster(ev.target.result, file.name);
-                reader.readAsText(file);
+        // Adicionar usuário
+        if (btnAddUser) {
+            btnAddUser.addEventListener('click', () => {
+                const nome = novoNome?.value.trim() || '';
+                const usuario = novoUsuario?.value.trim() || '';
+                const senha = novaSenha?.value || '';
+                const role = novoRole?.value || 'user';
+                if (!nome || !usuario || !senha) { Utils.showToast('⚠️ Preencha todos', 'error'); return; }
+                const resultado = Auth.cadastrar(nome, usuario, senha);
+                if (resultado.sucesso) {
+                    if (role === 'master') Auth.updateUser(usuario, { role: 'master' });
+                    Utils.showToast('✅ Usuário criado!', 'success');
+                    if (novoNome) novoNome.value = '';
+                    if (novoUsuario) novoUsuario.value = '';
+                    if (novaSenha) novaSenha.value = '';
+                    renderizarUsuarios();
+                } else Utils.showToast('❌ ' + resultado.mensagem, 'error');
             });
         }
         
+        // Importação
+        if (importZoneMaster && fileInputMaster) {
+            importZoneMaster.addEventListener('click', () => fileInputMaster.click());
+            fileInputMaster.addEventListener('change', async (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (ev) => await importarBaseMaster(ev.target.result, file.name); reader.readAsText(file); fileInputMaster.value = ''; });
+            importZoneMaster.addEventListener('dragover', (e) => { e.preventDefault(); importZoneMaster.classList.add('drag-over'); });
+            importZoneMaster.addEventListener('dragleave', () => importZoneMaster.classList.remove('drag-over'));
+            importZoneMaster.addEventListener('drop', async (e) => { e.preventDefault(); importZoneMaster.classList.remove('drag-over'); const file = e.dataTransfer.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (ev) => await importarBaseMaster(ev.target.result, file.name); reader.readAsText(file); });
+        }
         btnRecarregarBase?.addEventListener('click', carregarBaseDoSupabase);
         
+        // Pesquisa de código - NÃO salva ao sair do campo
         if (inputCodigo) {
             inputCodigo.addEventListener('change', () => processarCodigo(inputCodigo.value));
             inputCodigo.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); processarCodigo(inputCodigo.value); if (inputDescricao?.value) { inputQuantidade?.focus(); inputQuantidade?.select(); } }
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    processarCodigo(inputCodigo.value);
+                    // Focar no próximo campo (quantidade) só se encontrou produto
+                    if (inputDescricao?.value && inputQuantidade) {
+                        inputQuantidade.focus();
+                        inputQuantidade.select();
+                    }
+                }
             });
-            inputCodigo.addEventListener('blur', () => {
-                if (inputCodigo.value.trim()) processarCodigo(inputCodigo.value);
-            });
         }
         
-        // ============ FUNÇÃO PRINCIPAL: Processar código digitado/bipado ============
-function processarCodigo(codigoDigitado) {
-    if (!codigoDigitado?.trim()) {
-        if (inputDescricao) inputDescricao.value = '';
-        if (inputEmbalagem) inputEmbalagem.value = '';
-        return;
-    }
-    
-    if (!state.produtosMapCodAcesso.size) {
-        Utils.showToast('⚠️ Base vazia', 'error');
-        return;
-    }
-    
-    // Limpar o código digitado (remover espaços)
-    const codigoLimpo = codigoDigitado.trim();
-    
-    // Pesquisar o produto pelo código (busca primeiro em CODACESSO, depois em SEQPRODUTO)
-    const produto = pesquisarProduto(codigoLimpo);
-    
-    if (produto) {
-        // Preencher descrição e embalagem
-        if (inputDescricao) inputDescricao.value = produto.descCompleta;
-        if (inputEmbalagem) inputEmbalagem.value = produto.embalagemFormatada;
-        
-        // ⚡ SUBSTITUIR o código pelo SEQPRODUTO
-        // Só substitui se o código original for diferente do seqproduto
-        // (ou seja, se foi bipado pelo codacesso)
-        const codigoFinal = produto.seqProduto || codigoLimpo;
-        
-        if (inputCodigo) {
-            inputCodigo.value = codigoFinal;
+        function processarCodigo(codigoDigitado) {
+            if (!codigoDigitado?.trim()) { if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = ''; return; }
+            if (!state.produtosMapCodAcesso.size) { Utils.showToast('⚠️ Base vazia', 'error'); return; }
+            const produto = pesquisarProduto(codigoDigitado);
+            if (produto) {
+                if (inputDescricao) inputDescricao.value = produto.descCompleta;
+                if (inputEmbalagem) inputEmbalagem.value = produto.embalagemFormatada;
+                if (inputCodigo) {
+                    inputCodigo.value = produto.seqProduto || codigoDigitado;
+                    inputCodigo.classList.add('input-success');
+                    setTimeout(() => inputCodigo?.classList.remove('input-success'), 1500);
+                }
+                Utils.playBeep(); Utils.vibrate(40);
+            } else {
+                if (inputDescricao) inputDescricao.value = '';
+                if (inputEmbalagem) inputEmbalagem.value = '';
+                if (inputCodigo) { inputCodigo.classList.add('input-error'); setTimeout(() => inputCodigo?.classList.remove('input-error'), 1500); }
+                Utils.showToast('❌ Não encontrado', 'error');
+            }
         }
         
-        // Feedback visual
-        if (inputCodigo) {
-            inputCodigo.classList.add('input-success');
-            setTimeout(() => {
-                if (inputCodigo) inputCodigo.classList.remove('input-success');
-            }, 1500);
-        }
+        // Salvar - SÓ salva ao clicar no botão ou Ctrl+Enter
+        btnSalvar?.addEventListener('click', executarSalvamento);
         
-        Utils.playBeep();
-        Utils.vibrate(40);
-        
-        console.log('🔍 Código original bipado:', codigoLimpo);
-        console.log('📦 SEQPRODUTO (salvo na contagem):', codigoFinal);
-        console.log('📝 Descrição:', produto.descCompleta);
-        
-    } else {
-        // Produto não encontrado
-        if (inputDescricao) inputDescricao.value = '';
-        if (inputEmbalagem) inputEmbalagem.value = '';
-        if (inputCodigo) {
-            inputCodigo.classList.add('input-error');
-            setTimeout(() => {
-                if (inputCodigo) inputCodigo.classList.remove('input-error');
-            }, 1500);
-        }
-        Utils.showToast('❌ Produto não encontrado na base', 'error');
-    }
-}
-        
-        btnSalvar?.addEventListener('click', async () => {
+        function executarSalvamento() {
+            if (state.salvandoContagem) return;
+            
             const rua = inputRua?.value.trim() || '';
             const faixa = parseInt(inputFaixa?.value) || 0;
             const codigo = inputCodigo?.value.trim() || '';
@@ -672,42 +566,27 @@ function processarCodigo(codigoDigitado) {
             
             if (!rua || !faixa || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos', 'error'); return; }
             
+            state.salvandoContagem = true;
+            
             const dh = Utils.formatDataHora(new Date());
-            const contagem = {
-                localId: Utils.generateId(),
-                rua, faixa, codigo,
-                descricao: desc,
-                embalagem: emb,
-                quantidade: qtd,
-                observacoes: obs,
-                data: dh.data,
-                hora: dh.hora,
-                dataISO: dh.iso,
-                synced: false,
-                usuario: currentUser.usuario,
-                usuarioNome: currentUser.nome
-            };
+            const contagem = { localId: Utils.generateId(), rua, faixa, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome };
             
-            // Log do que está sendo salvo
-            console.log('💾 Salvando contagem:');
-            console.log('   Código (SEQPRODUTO):', contagem.codigo);
-            console.log('   Descrição:', contagem.descricao);
-            console.log('   Usuário:', contagem.usuarioNome);
-            
-            const res = await salvarContagem(contagem);
-            if (res !== 'cancelar') {
-                Utils.showToast('✅ Salvo!', 'success');
-                if (inputRua) inputRua.value = '';
-                if (inputFaixa) inputFaixa.value = '';
-                if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success', 'input-error'); }
-                if (inputDescricao) inputDescricao.value = '';
-                if (inputEmbalagem) inputEmbalagem.value = '';
-                if (inputQuantidade) inputQuantidade.value = '1';
-                if (inputObservacoes) inputObservacoes.value = '';
-                if (inputRua) inputRua.focus();
-            }
-            renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
-        });
+            salvarContagem(contagem).then(res => {
+                if (res !== 'cancelar') {
+                    Utils.showToast('✅ Salvo!', 'success');
+                    if (inputRua) inputRua.value = '';
+                    if (inputFaixa) inputFaixa.value = '';
+                    if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success', 'input-error'); }
+                    if (inputDescricao) inputDescricao.value = '';
+                    if (inputEmbalagem) inputEmbalagem.value = '';
+                    if (inputQuantidade) inputQuantidade.value = '1';
+                    if (inputObservacoes) inputObservacoes.value = '';
+                    if (inputRua) inputRua.focus();
+                }
+                renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+                state.salvandoContagem = false;
+            });
+        }
         
         btnNovaContagem?.addEventListener('click', () => {
             if (inputRua) inputRua.value = '';
@@ -720,100 +599,46 @@ function processarCodigo(codigoDigitado) {
             if (inputRua) inputRua.focus();
         });
         
+        // Câmera
         btnCamera?.addEventListener('click', () => {
-    if (Camera.isOpen) {
-        Camera.close();
-        if (modalCamera) modalCamera.style.display = 'none';
-    } else {
-        if (modalCamera) modalCamera.style.display = 'flex';
-        Camera.open(cameraVideo, (codigoLido) => {
-            // Código lido pela câmera (DUN/EAN do CODACESSO)
-            console.log('📷 Código lido pela câmera:', codigoLido);
-            
-            // Coloca o código no campo temporariamente e processa
-            if (inputCodigo) {
-                inputCodigo.value = codigoLido;
-            }
-            
-            // Processa o código (vai substituir pelo SEQPRODUTO)
-            processarCodigo(codigoLido);
-            
-            if (!Camera.continuousMode && modalCamera) {
-                modalCamera.style.display = 'none';
-            }
+            if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; }
+            else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigo) => { if (inputCodigo) inputCodigo.value = codigo; processarCodigo(codigo); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); }
         });
-    }
-});
         btnFecharCamera?.addEventListener('click', () => { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; });
-        btnCameraContinuo?.addEventListener('click', () => {
-            const cont = Camera.toggleContinuous();
-            if (modoCameraLabel) modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO';
-        });
+        btnCameraContinuo?.addEventListener('click', () => { const cont = Camera.toggleContinuous(); if (modoCameraLabel) modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO'; });
         
+        // Duplicidade
         $('#btnEditarExistente')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar'); });
         $('#btnSomarQuantidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar'); });
         $('#btnCancelarDuplicidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; state.resolvendoDuplicidade = null; });
         
+        // Exportação
         btnExportCSV?.addEventListener('click', () => {
             if (!isMaster) { Utils.showToast('Acesso restrito', 'error'); return; }
-            const dados = getHistoricoFiltrado().map(c => ({
-                Rua: c.rua, Faixa: c.faixa, Código: c.codigo,
-                Descrição: c.descricao, Embalagem: c.embalagem,
-                Quantidade: c.quantidade, Data: c.data || '',
-                Hora: c.hora || '', Observações: c.observacoes || '',
-                Usuário: c.usuarioNome || c.usuario || ''
-            }));
+            const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data || '', Hora: c.hora || '', Observações: c.observacoes || '', Usuário: c.usuarioNome || c.usuario || '' }));
             if (!dados.length) { Utils.showToast('Nenhum dado', 'error'); return; }
             const cab = Object.keys(dados[0]).join(';');
             const csv = '\uFEFF' + [cab, ...dados.map(d => Object.values(d).map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';'))].join('\n');
             Utils.downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), 'contagem_' + new Date().toISOString().slice(0, 10) + '.csv');
         });
-        
         btnExportExcel?.addEventListener('click', () => {
             if (!isMaster) { Utils.showToast('Acesso restrito', 'error'); return; }
-            const dados = getHistoricoFiltrado().map(c => ({
-                Rua: c.rua, Faixa: c.faixa, Código: c.codigo,
-                Descrição: c.descricao, Embalagem: c.embalagem,
-                Quantidade: c.quantidade, Data: c.data || '',
-                Hora: c.hora || '', Observações: c.observacoes || '',
-                Usuário: c.usuarioNome || c.usuario || ''
-            }));
+            const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data || '', Hora: c.hora || '', Observações: c.observacoes || '', Usuário: c.usuarioNome || c.usuario || '' }));
             if (!dados.length) { Utils.showToast('Nenhum dado', 'error'); return; }
-            const ws = XLSX.utils.json_to_sheet(dados);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Contagens');
-            XLSX.writeFile(wb, 'contagem_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+            const ws = XLSX.utils.json_to_sheet(dados); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Contagens'); XLSX.writeFile(wb, 'contagem_' + new Date().toISOString().slice(0, 10) + '.xlsx');
         });
         
         [filtroRua, filtroFaixa, filtroCodigo, filtroDescricao].forEach(i => i?.addEventListener('input', renderizarHistorico));
-        $$('thead th[data-sort]').forEach(th => th.addEventListener('click', () => {
-            const col = th.dataset.sort;
-            state.sortDirection = state.sortColumn === col ? (state.sortDirection === 'asc' ? 'desc' : 'asc') : 'asc';
-            state.sortColumn = col;
-            renderizarHistorico();
-        }));
+        $$('thead th[data-sort]').forEach(th => th.addEventListener('click', () => { const col = th.dataset.sort; state.sortDirection = state.sortColumn === col ? (state.sortDirection === 'asc' ? 'desc' : 'asc') : 'asc'; state.sortColumn = col; renderizarHistorico(); }));
         
+        // Atalhos - APENAS Ctrl+Enter salva
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; }
-            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); btnSalvar?.click(); }
-            if (e.key === 'Enter' && document.activeElement === inputQuantidade) { e.preventDefault(); btnSalvar?.click(); }
+            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); executarSalvamento(); }
         });
         
-        window.addEventListener('online', async () => {
-            Utils.showToast('🌐 Online!', 'success');
-            state.dbConnected = true;
-            updateConnectionDot();
-            if (Database.supabase) {
-                await syncPendingContagens();
-                if (!state.produtosMapCodAcesso.size) await carregarBaseDoSupabase();
-            }
-        });
-        
-        window.addEventListener('offline', () => {
-            Utils.showToast('📱 Offline', 'warning');
-            state.dbConnected = false;
-            updateConnectionDot();
-        });
+        window.addEventListener('online', async () => { state.dbConnected = true; updateConnectionDot(); if (Database.supabase) { await syncPendingContagens(); if (!state.produtosMapCodAcesso.size) await carregarBaseDoSupabase(); } });
+        window.addEventListener('offline', () => { state.dbConnected = false; updateConnectionDot(); });
     }
     
     init();
