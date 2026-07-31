@@ -1,7 +1,3 @@
-// ============================================================
-// AUTH.JS - Autenticação com Supabase + LocalStorage
-// ============================================================
-
 const Auth = {
     STORAGE_KEY: 'blmez_current_user',
     LOCAL_USERS_KEY: 'blmez_users',
@@ -15,7 +11,6 @@ const Auth = {
     },
     
     init() {
-        // Garantir que o master existe sempre
         this._garantirMasterLocal();
     },
     
@@ -28,7 +23,6 @@ const Auth = {
     },
     
     async getAllUsers() {
-        // Tentar buscar do Supabase primeiro
         if (Database.supabase) {
             try {
                 const { data, error } = await Database.supabase
@@ -37,22 +31,15 @@ const Auth = {
                     .order('created_at', { ascending: false });
                 
                 if (!error && data && data.length > 0) {
-                    // Sincronizar com localStorage
                     localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(data));
                     return data;
                 }
-            } catch (e) {
-                console.warn('⚠️ Supabase indisponível, usando dados locais');
-            }
+            } catch (e) {}
         }
-        
-        // Fallback: localStorage
-        const users = this._getLocalUsers();
-        return users;
+        return this._getLocalUsers();
     },
     
     async saveUser(userData) {
-        // Tentar Supabase
         if (Database.supabase) {
             try {
                 const { data, error } = await Database.supabase
@@ -62,18 +49,14 @@ const Auth = {
                     .single();
                 
                 if (!error && data) {
-                    // Também salvar no localStorage
                     const users = this._getLocalUsers();
                     users.push({ ...userData, id: data.id, created_at: new Date().toISOString() });
                     localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(users));
                     return { sucesso: true, id: data.id };
                 }
-            } catch (e) {
-                console.warn('⚠️ Erro Supabase, salvando localmente');
-            }
+            } catch (e) {}
         }
         
-        // Fallback localStorage
         const users = this._getLocalUsers();
         const newUser = { ...userData, id: Date.now(), created_at: new Date().toISOString() };
         users.push(newUser);
@@ -82,7 +65,6 @@ const Auth = {
     },
     
     async updateUser(usuario, updates) {
-        // Tentar Supabase
         if (Database.supabase) {
             try {
                 const { error } = await Database.supabase
@@ -91,7 +73,6 @@ const Auth = {
                     .eq('usuario', usuario);
                 
                 if (!error) {
-                    // Atualizar localStorage
                     const users = this._getLocalUsers();
                     const idx = users.findIndex(u => u.usuario === usuario);
                     if (idx >= 0) {
@@ -103,7 +84,6 @@ const Auth = {
             } catch (e) {}
         }
         
-        // Fallback localStorage
         const users = this._getLocalUsers();
         const idx = users.findIndex(u => u.usuario === usuario);
         if (idx >= 0) {
@@ -118,7 +98,6 @@ const Auth = {
             return { sucesso: false, mensagem: 'Não é possível excluir o usuário Master principal.' };
         }
         
-        // Tentar Supabase
         if (Database.supabase) {
             try {
                 const { error } = await Database.supabase
@@ -127,7 +106,6 @@ const Auth = {
                     .eq('usuario', usuario);
                 
                 if (!error) {
-                    // Remover do localStorage
                     const users = this._getLocalUsers();
                     const filtered = users.filter(u => u.usuario !== usuario);
                     localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(filtered));
@@ -136,7 +114,6 @@ const Auth = {
             } catch (e) {}
         }
         
-        // Fallback localStorage
         const users = this._getLocalUsers();
         const filtered = users.filter(u => u.usuario !== usuario);
         localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(filtered));
@@ -157,15 +134,9 @@ const Auth = {
     },
     
     async cadastrar(nome, usuario, senha) {
-        if (!nome || nome.trim().length < 3) {
-            return { sucesso: false, mensagem: 'Nome deve ter pelo menos 3 caracteres.' };
-        }
-        if (!usuario || usuario.trim().length < 4) {
-            return { sucesso: false, mensagem: 'Usuário deve ter pelo menos 4 caracteres.' };
-        }
-        if (!senha || senha.trim().length < 4) {
-            return { sucesso: false, mensagem: 'Senha deve ter pelo menos 4 caracteres.' };
-        }
+        if (!nome || nome.trim().length < 3) return { sucesso: false, mensagem: 'Nome deve ter pelo menos 3 caracteres.' };
+        if (!usuario || usuario.trim().length < 4) return { sucesso: false, mensagem: 'Usuário deve ter pelo menos 4 caracteres.' };
+        if (!senha || senha.trim().length < 4) return { sucesso: false, mensagem: 'Senha deve ter pelo menos 4 caracteres.' };
         
         const users = await this.getAllUsers();
         if (users.find(u => u.usuario === usuario.trim())) {
@@ -185,13 +156,8 @@ const Auth = {
         const users = await this.getAllUsers();
         const user = users.find(u => u.usuario === usuario.trim() && u.senha === senha.trim());
         
-        if (!user) {
-            return { sucesso: false, mensagem: 'Usuário ou senha incorretos.' };
-        }
-        
-        if (user.ativo === false) {
-            return { sucesso: false, mensagem: 'Usuário desativado. Contate o administrador.' };
-        }
+        if (!user) return { sucesso: false, mensagem: 'Usuário ou senha incorretos.' };
+        if (user.ativo === false) return { sucesso: false, mensagem: 'Usuário desativado. Contate o administrador.' };
         
         const sessionData = {
             nome: user.nome,
@@ -213,9 +179,7 @@ const Auth = {
         try {
             const session = localStorage.getItem(this.STORAGE_KEY);
             return session ? JSON.parse(session) : null;
-        } catch (e) {
-            return null;
-        }
+        } catch (e) { return null; }
     },
     
     isMaster() {

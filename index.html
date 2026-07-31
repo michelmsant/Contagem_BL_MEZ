@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="css/style.css?v=2.0">
     
     <style>
-        /* Botão Dark Mode na tela de login */
         .dark-mode-toggle {
             position: absolute;
             top: 20px;
@@ -45,12 +44,10 @@
     </style>
 </head>
 <body>
-    <!-- Botão Dark Mode -->
     <button class="dark-mode-toggle" id="darkModeToggle" title="Alternar modo escuro">🌙</button>
 
     <div class="login-container">
         <div class="login-card">
-            <!-- Tela de Login -->
             <div id="loginScreen">
                 <div class="login-header">
                     <div class="login-logo">📦</div>
@@ -70,16 +67,13 @@
                     <input type="password" id="loginSenha" placeholder="Digite sua senha" autocomplete="current-password">
                 </div>
                 
-                <button class="btn btn-primary" id="btnLogin">
-                    🔐 Entrar
-                </button>
+                <button class="btn btn-primary" id="btnLogin">🔐 Entrar</button>
                 
                 <div class="login-footer">
                     Não tem conta? <a id="showCadastro">Cadastre-se</a>
                 </div>
             </div>
             
-            <!-- Tela de Cadastro -->
             <div id="cadastroScreen" style="display: none;">
                 <div class="login-header">
                     <div class="login-logo">📝</div>
@@ -110,13 +104,9 @@
                     <input type="password" id="cadastroConfirmarSenha" placeholder="Confirme sua senha">
                 </div>
                 
-                <button class="btn btn-success" id="btnCadastrar">
-                    ✅ Criar Conta
-                </button>
+                <button class="btn btn-success" id="btnCadastrar">✅ Criar Conta</button>
                 
-                <button class="btn btn-outline" id="showLogin">
-                    ← Voltar para Login
-                </button>
+                <button class="btn btn-outline" id="showLogin">← Voltar para Login</button>
             </div>
         </div>
     </div>
@@ -134,27 +124,23 @@
             const cadastroSuccess = document.getElementById('cadastroSuccess');
             const darkModeToggle = document.getElementById('darkModeToggle');
             
-            // Verificar se já está logado
             const currentUser = Auth.getCurrentUser();
             if (currentUser) {
                 window.location.href = 'app.html';
                 return;
             }
             
-            // ============ DARK MODE ============
             function updateDarkModeButton() {
                 const isDark = document.body.classList.contains('dark-mode');
                 darkModeToggle.textContent = isDark ? '☀️' : '🌙';
                 darkModeToggle.title = isDark ? 'Modo Claro' : 'Modo Escuro';
             }
             
-            // Verificar preferência salva
             if (localStorage.getItem('blmez_darkmode') === '1') {
                 document.body.classList.add('dark-mode');
             }
             updateDarkModeButton();
             
-            // Toggle dark mode
             darkModeToggle.addEventListener('click', () => {
                 document.body.classList.toggle('dark-mode');
                 const isDark = document.body.classList.contains('dark-mode');
@@ -162,7 +148,6 @@
                 updateDarkModeButton();
             });
             
-            // Alternar entre login e cadastro
             document.getElementById('showCadastro').addEventListener('click', (e) => {
                 e.preventDefault();
                 loginScreen.style.display = 'none';
@@ -178,8 +163,7 @@
                 cadastroSuccess.style.display = 'none';
             });
             
-            // Login
-            document.getElementById('btnLogin').addEventListener('click', () => {
+            document.getElementById('btnLogin').addEventListener('click', async () => {
                 const usuario = document.getElementById('loginUsuario').value;
                 const senha = document.getElementById('loginSenha').value;
                 
@@ -189,7 +173,7 @@
                     return;
                 }
                 
-                const resultado = Auth.login(usuario, senha);
+                const resultado = await Auth.login(usuario, senha);
                 
                 if (resultado.sucesso) {
                     loginError.classList.remove('show');
@@ -211,8 +195,7 @@
                 if (e.key === 'Enter') document.getElementById('loginSenha').focus();
             });
             
-            // Cadastro
-            document.getElementById('btnCadastrar').addEventListener('click', () => {
+            document.getElementById('btnCadastrar').addEventListener('click', async () => {
                 const nome = document.getElementById('cadastroNome').value;
                 const usuario = document.getElementById('cadastroUsuario').value;
                 const senha = document.getElementById('cadastroSenha').value;
@@ -233,7 +216,7 @@
                     return;
                 }
                 
-                const resultado = Auth.cadastrar(nome, usuario, senha);
+                const resultado = await Auth.cadastrar(nome, usuario, senha);
                 
                 if (resultado.sucesso) {
                     cadastroSuccess.textContent = resultado.mensagem + ' Redirecionando para login...';
@@ -257,7 +240,6 @@
             
             document.getElementById('loginUsuario').focus();
             
-            // Toast function
             function showToast(msg, type) {
                 const container = document.getElementById('toastContainer');
                 const toast = document.createElement('div');
