@@ -312,13 +312,28 @@
         if (baseInfo) baseInfo.textContent = state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' produtos na base';
     }
     
-    // ============ PESQUISA ============
+    // ============ PESQUISA DE PRODUTOS ============
+    // Retorna o produto completo (incluindo seqProduto)
     function pesquisarProduto(codigo) {
         if (!codigo?.trim()) return null;
         const c = codigo.trim();
+        
+        // Busca exata por CODACESSO (DUN/EAN bipado)
         if (state.produtosMapCodAcesso.has(c)) return state.produtosMapCodAcesso.get(c);
+        
+        // Busca exata por SEQPRODUTO
         if (state.produtosMapSeqProduto.has(c)) return state.produtosMapSeqProduto.get(c);
-        for (const [k, v] of state.produtosMapCodAcesso) if (k.startsWith(c)) return v;
+        
+        // Busca parcial (começa com) em CODACESSO
+        for (const [k, v] of state.produtosMapCodAcesso) {
+            if (k.startsWith(c)) return v;
+        }
+        
+        // Busca parcial em SEQPRODUTO
+        for (const [k, v] of state.produtosMapSeqProduto) {
+            if (k.startsWith(c)) return v;
+        }
+        
         return null;
     }
     
@@ -575,23 +590,54 @@
         btnRecarregarBase?.addEventListener('click', carregarBaseDoSupabase);
         
         if (inputCodigo) {
-            inputCodigo.addEventListener('change', () => pesquisarEAtualizar(inputCodigo.value));
+            inputCodigo.addEventListener('change', () => processarCodigo(inputCodigo.value));
             inputCodigo.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); pesquisarEAtualizar(inputCodigo.value); if (inputDescricao?.value) { inputQuantidade?.focus(); inputQuantidade?.select(); } }
+                if (e.key === 'Enter') { e.preventDefault(); processarCodigo(inputCodigo.value); if (inputDescricao?.value) { inputQuantidade?.focus(); inputQuantidade?.select(); } }
+            });
+            inputCodigo.addEventListener('blur', () => {
+                if (inputCodigo.value.trim()) processarCodigo(inputCodigo.value);
             });
         }
         
-        function pesquisarEAtualizar(codigo) {
-            if (!codigo?.trim()) { if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = ''; return; }
-            if (!state.produtosMapCodAcesso.size) { Utils.showToast('⚠️ Base vazia', 'error'); return; }
-            const prod = pesquisarProduto(codigo);
-            if (prod) {
-                if (inputDescricao) inputDescricao.value = prod.descCompleta;
-                if (inputEmbalagem) inputEmbalagem.value = prod.embalagemFormatada;
+        // ============ FUNÇÃO PRINCIPAL: Processar código digitado/bipado ============
+        function processarCodigo(codigoDigitado) {
+            if (!codigoDigitado?.trim()) {
+                if (inputDescricao) inputDescricao.value = '';
+                if (inputEmbalagem) inputEmbalagem.value = '';
+                return;
+            }
+            
+            if (!state.produtosMapCodAcesso.size) {
+                Utils.showToast('⚠️ Base vazia', 'error');
+                return;
+            }
+            
+            // Pesquisar o produto pelo código digitado/bipado
+            const produto = pesquisarProduto(codigoDigitado);
+            
+            if (produto) {
+                // Preencher descrição e embalagem
+                if (inputDescricao) inputDescricao.value = produto.descCompleta;
+                if (inputEmbalagem) inputEmbalagem.value = produto.embalagemFormatada;
+                
+                // ⚡ AQUI ESTÁ A MÁGICA: Substituir o código digitado pelo SEQPRODUTO
+                // Se foi bipado DUN/EAN (codacesso), troca pelo seqproduto
+                if (inputCodigo) {
+                    inputCodigo.value = produto.seqProduto || codigoDigitado;
+                }
+                
+                // Feedback visual
                 if (inputCodigo) inputCodigo.classList.add('input-success');
                 setTimeout(() => inputCodigo?.classList.remove('input-success'), 1500);
-                Utils.playBeep(); Utils.vibrate(40);
+                
+                Utils.playBeep();
+                Utils.vibrate(40);
+                
+                console.log('🔍 Código original:', codigoDigitado);
+                console.log('📦 SEQPRODUTO salvo:', produto.seqProduto);
+                console.log('📝 Descrição:', produto.descCompleta);
             } else {
+                // Produto não encontrado
                 if (inputDescricao) inputDescricao.value = '';
                 if (inputEmbalagem) inputEmbalagem.value = '';
                 if (inputCodigo) inputCodigo.classList.add('input-error');
@@ -626,6 +672,13 @@
                 usuario: currentUser.usuario,
                 usuarioNome: currentUser.nome
             };
+            
+            // Log do que está sendo salvo
+            console.log('💾 Salvando contagem:');
+            console.log('   Código (SEQPRODUTO):', contagem.codigo);
+            console.log('   Descrição:', contagem.descricao);
+            console.log('   Usuário:', contagem.usuarioNome);
+            
             const res = await salvarContagem(contagem);
             if (res !== 'cancelar') {
                 Utils.showToast('✅ Salvo!', 'success');
@@ -654,7 +707,19 @@
         
         btnCamera?.addEventListener('click', () => {
             if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; }
-            else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigo) => { if (inputCodigo) inputCodigo.value = codigo; pesquisarEAtualizar(codigo); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); }
+            else {
+                if (modalCamera) modalCamera.style.display = 'flex';
+                Camera.open(cameraVideo, (codigoLido) => {
+                    // Código lido pela câmera (DUN/EAN)
+                    console.log('📷 Código lido pela câmera:', codigoLido);
+                    
+                    // Coloca o código no campo e processa
+                    if (inputCodigo) inputCodigo.value = codigoLido;
+                    processarCodigo(codigoLido);
+                    
+                    if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none';
+                });
+            }
         });
         btnFecharCamera?.addEventListener('click', () => { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; });
         btnCameraContinuo?.addEventListener('click', () => {
