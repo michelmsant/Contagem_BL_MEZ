@@ -96,33 +96,52 @@ const Auth = {
     },
     
     cadastrar(nome, usuario, senha) {
-        if (!nome || nome.trim().length < 3) return { sucesso: false, mensagem: 'Nome deve ter pelo menos 3 caracteres.' };
-        if (!usuario || usuario.trim().length < 4) return { sucesso: false, mensagem: 'Usuário deve ter pelo menos 4 caracteres.' };
-        if (!senha || senha.trim().length < 4) return { sucesso: false, mensagem: 'Senha deve ter pelo menos 4 caracteres.' };
-        
-        const users = this._getLocalUsers();
-        if (users.find(u => u.usuario === usuario.trim())) {
-            return { sucesso: false, mensagem: 'Este nome de usuário já está em uso.' };
-        }
-        
-        const newUser = {
+    if (!nome || nome.trim().length < 3) return { sucesso: false, mensagem: 'Nome deve ter pelo menos 3 caracteres.' };
+    if (!usuario || usuario.trim().length < 4) return { sucesso: false, mensagem: 'Usuário deve ter pelo menos 4 caracteres.' };
+    if (!senha || senha.trim().length < 4) return { sucesso: false, mensagem: 'Senha deve ter pelo menos 4 caracteres.' };
+    
+    const users = this._getLocalUsers();
+    if (users.find(u => u.usuario === usuario.trim())) {
+        return { sucesso: false, mensagem: 'Este nome de usuário já está em uso.' };
+    }
+    
+    const newUser = {
+        nome: nome.trim(),
+        usuario: usuario.trim(),
+        senha: senha.trim(),
+        role: 'user',
+        ativo: true,
+        id: Date.now(),
+        created_at: new Date().toISOString()
+    };
+    
+    // Salvar localmente primeiro
+    users.push(newUser);
+    this._saveLocalUsers(users);
+    
+    // Enviar para o Supabase IMEDIATAMENTE
+    if (Database.supabase) {
+        Database.supabase.from('usuarios').insert([{
             nome: nome.trim(),
             usuario: usuario.trim(),
             senha: senha.trim(),
             role: 'user',
-            ativo: true,
-            id: Date.now(),
-            created_at: new Date().toISOString()
-        };
-        
-        users.push(newUser);
-        this._saveLocalUsers(users);
-        
-        // Enviar para o Supabase
-        this.saveUserToSupabase(newUser);
-        
-        return { sucesso: true, mensagem: 'Cadastro realizado com sucesso!' };
-    },
+            ativo: true
+        }]).then(({ error }) => {
+            if (error) {
+                console.error('❌ Erro ao salvar no Supabase:', error.message);
+            } else {
+                console.log('✅ Usuário ' + usuario.trim() + ' salvo no Supabase!');
+            }
+        }).catch(err => {
+            console.warn('⚠️ Supabase indisponível, salvo apenas localmente');
+        });
+    } else {
+        console.warn('⚠️ Database não inicializado, salvo apenas localmente');
+    }
+    
+    return { sucesso: true, mensagem: 'Cadastro realizado com sucesso!' };
+},
     
     async updateUser(usuario, updates) {
         let users = this._getLocalUsers();
