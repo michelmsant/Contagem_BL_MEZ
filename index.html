@@ -9,38 +9,23 @@
     
     <style>
         .dark-mode-toggle {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(255,255,255,0.15);
-            border: 1px solid rgba(255,255,255,0.25);
-            color: white;
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 1.3rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all var(--transition);
-            backdrop-filter: blur(10px);
-            z-index: 10;
+            position: absolute; top: 20px; right: 20px;
+            background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25);
+            color: white; width: 44px; height: 44px; border-radius: 50%;
+            cursor: pointer; font-size: 1.3rem; display: flex;
+            align-items: center; justify-content: center;
+            transition: all var(--transition); backdrop-filter: blur(10px); z-index: 10;
         }
+        .dark-mode-toggle:hover { background: rgba(255,255,255,0.25); transform: scale(1.05); }
+        body.dark-mode .dark-mode-toggle { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+        body.dark-mode .login-container { background: linear-gradient(160deg, #0a0f1a 0%, #1a2a4a 40%, #0a0f1a 100%); }
         
-        .dark-mode-toggle:hover {
-            background: rgba(255,255,255,0.25);
-            transform: scale(1.05);
+        .loading-spinner {
+            display: none; width: 20px; height: 20px;
+            border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+            border-radius: 50%; animation: spin 0.6s linear infinite;
         }
-        
-        body.dark-mode .dark-mode-toggle {
-            background: rgba(255,255,255,0.1);
-            border-color: rgba(255,255,255,0.2);
-        }
-        
-        body.dark-mode .login-container {
-            background: linear-gradient(160deg, #0a0f1a 0%, #1a2a4a 40%, #0a0f1a 100%);
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -59,7 +44,7 @@
                 
                 <div class="form-group">
                     <label>Usuário</label>
-                    <input type="text" id="loginUsuario" placeholder="Digite seu usuário" autocomplete="username">
+                    <input type="text" id="loginUsuario" placeholder="Digite seu usuário" autocomplete="username" inputmode="text">
                 </div>
                 
                 <div class="form-group">
@@ -67,7 +52,10 @@
                     <input type="password" id="loginSenha" placeholder="Digite sua senha" autocomplete="current-password">
                 </div>
                 
-                <button class="btn btn-primary" id="btnLogin">🔐 Entrar</button>
+                <button class="btn btn-primary" id="btnLogin">
+                    <span id="loginText">🔐 Entrar</span>
+                    <span class="loading-spinner" id="loginSpinner"></span>
+                </button>
                 
                 <div class="login-footer">
                     Não tem conta? <a id="showCadastro">Cadastre-se</a>
@@ -84,28 +72,12 @@
                 <div class="error-message" id="cadastroError"></div>
                 <div class="success-message" id="cadastroSuccess" style="display:none; background: var(--green-light); color: var(--green-dark); padding: 12px 16px; border-radius: var(--radius-sm); font-size: 0.85rem; margin-bottom: 16px; border: 1px solid rgba(16,185,129,0.2);"></div>
                 
-                <div class="form-group">
-                    <label>Nome Completo</label>
-                    <input type="text" id="cadastroNome" placeholder="Digite seu nome completo">
-                </div>
-                
-                <div class="form-group">
-                    <label>Usuário</label>
-                    <input type="text" id="cadastroUsuario" placeholder="Escolha um nome de usuário">
-                </div>
-                
-                <div class="form-group">
-                    <label>Senha</label>
-                    <input type="password" id="cadastroSenha" placeholder="Crie uma senha">
-                </div>
-                
-                <div class="form-group">
-                    <label>Confirmar Senha</label>
-                    <input type="password" id="cadastroConfirmarSenha" placeholder="Confirme sua senha">
-                </div>
+                <div class="form-group"><label>Nome Completo</label><input type="text" id="cadastroNome" placeholder="Digite seu nome completo"></div>
+                <div class="form-group"><label>Usuário</label><input type="text" id="cadastroUsuario" placeholder="Escolha um nome de usuário"></div>
+                <div class="form-group"><label>Senha</label><input type="password" id="cadastroSenha" placeholder="Crie uma senha"></div>
+                <div class="form-group"><label>Confirmar Senha</label><input type="password" id="cadastroConfirmarSenha" placeholder="Confirme sua senha"></div>
                 
                 <button class="btn btn-success" id="btnCadastrar">✅ Criar Conta</button>
-                
                 <button class="btn btn-outline" id="showLogin">← Voltar para Login</button>
             </div>
         </div>
@@ -113,14 +85,12 @@
     
     <div id="toastContainer"></div>
 
-    <!-- IMPORTANTE: Carregar Supabase SDK antes -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/utils.js"></script>
     <script src="js/database.js"></script>
     <script src="js/auth.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Inicializar Supabase
             Database.init();
             
             const loginScreen = document.getElementById('loginScreen');
@@ -129,47 +99,37 @@
             const cadastroError = document.getElementById('cadastroError');
             const cadastroSuccess = document.getElementById('cadastroSuccess');
             const darkModeToggle = document.getElementById('darkModeToggle');
+            const btnLogin = document.getElementById('btnLogin');
+            const loginText = document.getElementById('loginText');
+            const loginSpinner = document.getElementById('loginSpinner');
             
             const currentUser = Auth.getCurrentUser();
-            if (currentUser) {
-                window.location.href = 'app.html';
-                return;
-            }
+            if (currentUser) { window.location.href = 'app.html'; return; }
             
             function updateDarkModeButton() {
                 const isDark = document.body.classList.contains('dark-mode');
                 darkModeToggle.textContent = isDark ? '☀️' : '🌙';
-                darkModeToggle.title = isDark ? 'Modo Claro' : 'Modo Escuro';
             }
             
-            if (localStorage.getItem('blmez_darkmode') === '1') {
-                document.body.classList.add('dark-mode');
-            }
+            if (localStorage.getItem('blmez_darkmode') === '1') document.body.classList.add('dark-mode');
             updateDarkModeButton();
             
             darkModeToggle.addEventListener('click', () => {
                 document.body.classList.toggle('dark-mode');
-                const isDark = document.body.classList.contains('dark-mode');
-                localStorage.setItem('blmez_darkmode', isDark ? '1' : '0');
+                localStorage.setItem('blmez_darkmode', document.body.classList.contains('dark-mode') ? '1' : '0');
                 updateDarkModeButton();
             });
             
             document.getElementById('showCadastro').addEventListener('click', (e) => {
-                e.preventDefault();
-                loginScreen.style.display = 'none';
-                cadastroScreen.style.display = 'block';
-                loginError.classList.remove('show');
+                e.preventDefault(); loginScreen.style.display = 'none'; cadastroScreen.style.display = 'block'; loginError.classList.remove('show');
             });
             
             document.getElementById('showLogin').addEventListener('click', (e) => {
-                e.preventDefault();
-                cadastroScreen.style.display = 'none';
-                loginScreen.style.display = 'block';
-                cadastroError.classList.remove('show');
-                cadastroSuccess.style.display = 'none';
+                e.preventDefault(); cadastroScreen.style.display = 'none'; loginScreen.style.display = 'block'; cadastroError.classList.remove('show'); cadastroSuccess.style.display = 'none';
             });
             
-            document.getElementById('btnLogin').addEventListener('click', async () => {
+            // ============ LOGIN (ASSÍNCRONO) ============
+            btnLogin.addEventListener('click', async () => {
                 const usuario = document.getElementById('loginUsuario').value;
                 const senha = document.getElementById('loginSenha').value;
                 
@@ -179,28 +139,43 @@
                     return;
                 }
                 
-                const resultado = await Auth.login(usuario, senha);
+                // Mostrar loading
+                loginText.style.display = 'none';
+                loginSpinner.style.display = 'block';
+                btnLogin.disabled = true;
                 
-                if (resultado.sucesso) {
-                    loginError.classList.remove('show');
-                    showToast(resultado.mensagem, 'success');
-                    setTimeout(() => {
-                        window.location.href = 'app.html';
-                    }, 800);
-                } else {
-                    loginError.textContent = resultado.mensagem;
+                try {
+                    const resultado = await Auth.login(usuario, senha);
+                    
+                    if (resultado.sucesso) {
+                        loginError.classList.remove('show');
+                        showToast(resultado.mensagem, 'success');
+                        setTimeout(() => { window.location.href = 'app.html'; }, 500);
+                    } else {
+                        loginText.style.display = 'inline';
+                        loginSpinner.style.display = 'none';
+                        btnLogin.disabled = false;
+                        loginError.textContent = resultado.mensagem;
+                        loginError.classList.add('show');
+                    }
+                } catch (err) {
+                    loginText.style.display = 'inline';
+                    loginSpinner.style.display = 'none';
+                    btnLogin.disabled = false;
+                    loginError.textContent = 'Erro ao conectar. Tente novamente.';
                     loginError.classList.add('show');
                 }
             });
             
             document.getElementById('loginSenha').addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') document.getElementById('btnLogin').click();
+                if (e.key === 'Enter') btnLogin.click();
             });
             
             document.getElementById('loginUsuario').addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') document.getElementById('loginSenha').focus();
             });
             
+            // ============ CADASTRO ============
             document.getElementById('btnCadastrar').addEventListener('click', () => {
                 const nome = document.getElementById('cadastroNome').value;
                 const usuario = document.getElementById('cadastroUsuario').value;
@@ -222,11 +197,10 @@
                     return;
                 }
                 
-                // Cadastrar (salva local + envia para Supabase)
                 const resultado = Auth.cadastrar(nome, usuario, senha);
                 
                 if (resultado.sucesso) {
-                    cadastroSuccess.textContent = resultado.mensagem + ' Redirecionando para login...';
+                    cadastroSuccess.textContent = resultado.mensagem + ' Redirecionando...';
                     cadastroSuccess.style.display = 'block';
                     document.getElementById('cadastroNome').value = '';
                     document.getElementById('cadastroUsuario').value = '';
@@ -238,7 +212,7 @@
                         loginScreen.style.display = 'block';
                         cadastroSuccess.style.display = 'none';
                         document.getElementById('loginUsuario').focus();
-                    }, 2000);
+                    }, 1500);
                 } else {
                     cadastroError.textContent = resultado.mensagem;
                     cadastroError.classList.add('show');

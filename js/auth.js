@@ -42,16 +42,14 @@ const Auth = {
             
             if (!error && data && data.length > 0) {
                 let merged = [...data];
-                // Garantir que o Master sempre existe
                 if (!merged.find(u => u.usuario === this.MASTER_USER.usuario)) {
                     merged.push({ ...this.MASTER_USER });
                 }
-                // Salvar no localStorage para uso offline
                 localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(merged));
-                console.log('✅ Usuários sincronizados do Supabase:', merged.length);
+                console.log('✅ Usuários sincronizados:', merged.length);
             }
         } catch (e) {
-            console.warn('⚠️ Não foi possível sincronizar do Supabase');
+            console.warn('⚠️ Supabase indisponível');
         }
     },
     
@@ -59,7 +57,6 @@ const Auth = {
         try {
             const data = localStorage.getItem(this.LOCAL_USERS_KEY);
             let users = data ? JSON.parse(data) : [];
-            // Sempre garantir Master
             if (!users.find(u => u.usuario === this.MASTER_USER.usuario)) {
                 users.push({ ...this.MASTER_USER });
             }
@@ -75,7 +72,6 @@ const Auth = {
         } catch (e) {}
     },
     
-    // Buscar usuário do Supabase diretamente
     async _findUserInSupabase(usuario) {
         if (!Database.supabase) return null;
         try {
@@ -85,24 +81,18 @@ const Auth = {
                 .eq('usuario', usuario)
                 .single();
             
-            if (!error && data) {
-                return data;
-            }
+            if (!error && data) return data;
         } catch (e) {}
         return null;
     },
     
     async getAllUsers() {
-        // Sempre sincronizar primeiro
         await this._syncFromSupabase();
         return this._getLocalUsers();
     },
     
     async saveUserToSupabase(userData) {
-        if (!Database.supabase) {
-            console.warn('⚠️ Supabase não conectado. Usuário salvo apenas localmente.');
-            return;
-        }
+        if (!Database.supabase) return;
         try {
             const { error } = await Database.supabase.from('usuarios').insert([{
                 nome: userData.nome,
@@ -111,15 +101,8 @@ const Auth = {
                 role: userData.role || 'user',
                 ativo: true
             }]);
-            
-            if (error) {
-                console.error('❌ Erro Supabase:', error.message);
-            } else {
-                console.log('✅ Usuário salvo no Supabase:', userData.usuario);
-            }
-        } catch (e) {
-            console.warn('⚠️ Erro ao salvar no Supabase:', e.message);
-        }
+            if (!error) console.log('✅ Usuário salvo no Supabase:', userData.usuario);
+        } catch (e) {}
     },
     
     cadastrar(nome, usuario, senha) {
@@ -142,71 +125,51 @@ const Auth = {
             created_at: new Date().toISOString()
         };
         
-        // Salvar localmente
         users.push(newUser);
         this._saveLocalUsers(users);
-        
-        // Enviar para o Supabase
         this.saveUserToSupabase(newUser);
         
         return { sucesso: true, mensagem: 'Cadastro realizado com sucesso!' };
     },
     
-    // ============ LOGIN CORRIGIDO ============
+    // ============ LOGIN ============
     async login(usuario, senha) {
-        if (!usuario || !senha) return { sucesso: false, mensagem: 'Preencha todos os campos.' };
-        
-        const usuarioLimpo = usuario.trim();
-        const senhaLimpa = senha.trim();
-        
-        // 1. Verificar no Master primeiro (sempre funciona)
-        if (usuarioLimpo === this.MASTER_USER.usuario && senhaLimpa === this.MASTER_USER.senha) {
-            const sessionData = {
-                nome: this.MASTER_USER.nome,
-                usuario: this.MASTER_USER.usuario,
-                role: 'master',
-                loginTime: new Date().toISOString()
-            };
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(sessionData));
-            return { sucesso: true, mensagem: `Bem-vindo, ${this.MASTER_USER.nome}!`, user: sessionData };
+        if (!usuario || !senha) {
+            return { sucesso: false, mensagem: 'Preencha todos os campos.' };
         }
         
-        // 2. Tentar buscar do Supabase PRIMEIRO
+        const u = usuario.trim();
+        const s = senha.trim();
+        
+        // 1. MASTER - sempre funciona
+        if (u === this.MASTER_USER.usuario && s === this.MASTER_USER.senha) {
+            return this._createSession(this.MASTER_USER);
+        }
+        
+        // 2. Buscar no Supabase
         if (Database.supabase) {
             try {
-                const supabaseUser = await this._findUserInSupabase(usuarioLimpo);
-                
-                if (supabaseUser && supabaseUser.senha === senhaLimpa) {
+                const supabaseUser = await this._findUserInSupabase(u);
+                if (supabaseUser && supabaseUser.senha === s) {
                     if (supabaseUser.ativo === false) {
                         return { sucesso: false, mensagem: 'Usuário desativado.' };
                     }
-                    
-                    // Salvar no localStorage local para próximos logins
+                    // Atualizar localStorage
                     let localUsers = this._getLocalUsers();
-                    if (!localUsers.find(u => u.usuario === usuarioLimpo)) {
+                    if (!localUsers.find(lu => lu.usuario === u)) {
                         localUsers.push(supabaseUser);
                         this._saveLocalUsers(localUsers);
                     }
-                    
-                    const sessionData = {
-                        nome: supabaseUser.nome,
-                        usuario: supabaseUser.usuario,
-                        role: supabaseUser.role || 'user',
-                        loginTime: new Date().toISOString()
-                    };
-                    
-                    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(sessionData));
-                    console.log('✅ Login via Supabase:', supabaseUser.nome);
-                    return { sucesso: true, mensagem: `Bem-vindo, ${supabaseUser.nome}!`, user: sessionData };
+                    return this._createSession(supabaseUser);
                 }
             } catch (e) {
-                console.warn('⚠️ Supabase indisponível, tentando localStorage...');
+                console.warn('Erro Supabase, tentando local...');
             }
         }
         
-        // 3. Fallback: localStorage
+        // 3. Fallback localStorage
         const users = this._getLocalUsers();
-        const user = users.find(u => u.usuario === usuarioLimpo && u.senha === senhaLimpa);
+        const user = users.find(lu => lu.usuario === u && lu.senha === s);
         
         if (!user) {
             return { sucesso: false, mensagem: 'Usuário ou senha incorretos.' };
@@ -216,15 +179,17 @@ const Auth = {
             return { sucesso: false, mensagem: 'Usuário desativado.' };
         }
         
+        return this._createSession(user);
+    },
+    
+    _createSession(user) {
         const sessionData = {
             nome: user.nome,
             usuario: user.usuario,
             role: user.role || 'user',
             loginTime: new Date().toISOString()
         };
-        
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(sessionData));
-        console.log('✅ Login via localStorage:', user.nome);
         return { sucesso: true, mensagem: `Bem-vindo, ${user.nome}!`, user: sessionData };
     },
     
@@ -235,14 +200,9 @@ const Auth = {
             users[idx] = { ...users[idx], ...updates };
             this._saveLocalUsers(users);
         }
-        
         if (Database.supabase) {
-            try {
-                await Database.supabase.from('usuarios').update(updates).eq('usuario', usuario);
-                console.log('✅ Usuário atualizado no Supabase:', usuario);
-            } catch (e) {}
+            try { await Database.supabase.from('usuarios').update(updates).eq('usuario', usuario); } catch (e) {}
         }
-        
         return { sucesso: true };
     },
     
@@ -250,18 +210,12 @@ const Auth = {
         if (usuario === this.MASTER_USER.usuario) {
             return { sucesso: false, mensagem: 'Não é possível excluir o usuário Master principal.' };
         }
-        
         let users = this._getLocalUsers();
         users = users.filter(u => u.usuario !== usuario);
         this._saveLocalUsers(users);
-        
         if (Database.supabase) {
-            try {
-                await Database.supabase.from('usuarios').delete().eq('usuario', usuario);
-                console.log('✅ Usuário excluído do Supabase:', usuario);
-            } catch (e) {}
+            try { await Database.supabase.from('usuarios').delete().eq('usuario', usuario); } catch (e) {}
         }
-        
         return { sucesso: true };
     },
     
