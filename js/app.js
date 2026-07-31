@@ -110,7 +110,6 @@
             updateConnectionDot();
             if (testOk) {
                 await carregarBaseDoSupabase();
-                // Sincronizar contagens do Supabase ao iniciar
                 await syncFromSupabase();
                 await syncPendingContagens();
             }
@@ -162,7 +161,6 @@
                     usuarioNome: c.usuario_nome || ''
                 }));
                 
-                // Manter contagens locais não sincronizadas
                 const localNaoSync = state.contagensLocal.filter(c => !c.synced);
                 state.contagensLocal = [...remoteMapped, ...localNaoSync];
                 saveContagens();
@@ -201,7 +199,6 @@
             if (item.dataset.section === nome) item.classList.add('active');
         });
         
-        // Sincronizar e renderizar
         if (nome === 'historico' || nome === 'dashboard') {
             if (Database.supabase && navigator.onLine) {
                 await syncFromSupabase();
@@ -310,7 +307,10 @@
     function loadContagens() {
         try {
             state.contagensLocal = JSON.parse(localStorage.getItem(Database.KEYS.CONTAGENS) || '[]');
+            // Remover campo faixa de dados antigos
+            state.contagensLocal = state.contagensLocal.map(c => { delete c.faixa; return c; });
             state.pendingContagens = JSON.parse(localStorage.getItem(Database.KEYS.PENDING) || '[]');
+            state.pendingContagens = state.pendingContagens.map(c => { delete c.faixa; return c; });
         } catch (e) { state.contagensLocal = []; state.pendingContagens = []; }
     }
     
@@ -319,7 +319,12 @@
     }
     
     async function salvarContagem(contagem) {
+        // Remover faixa se existir (dados antigos)
+        delete contagem.faixa;
+        
+        // Verificar duplicidade: MESMA rua E MESMO código
         const idx = state.contagensLocal.findIndex(c => c.rua === contagem.rua && c.codigo === contagem.codigo);
+        
         if (idx >= 0) {
             return new Promise(resolve => {
                 state.resolvendoDuplicidade = async (op) => {
@@ -333,25 +338,24 @@
                         state.contagensLocal[idx].synced = false; state.contagensLocal[idx].usuario = contagem.usuario; state.contagensLocal[idx].usuarioNome = contagem.usuarioNome;
                     }
                     saveContagens();
-                    // Tentar enviar para o Supabase imediatamente
                     await enviarParaSupabase(state.contagensLocal[idx]);
                     renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
                     resolve(op);
                 };
-                msgDuplicidade.innerHTML = '<strong>' + state.contagensLocal[idx].rua + '</strong><br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
+                msgDuplicidade.innerHTML = '<strong>' + Utils.escapeHTML(state.contagensLocal[idx].rua) + '</strong><br>Código: ' + Utils.escapeHTML(state.contagensLocal[idx].codigo) + '<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
                 modalDuplicidade.style.display = 'flex';
             });
         }
+        
+        // Nova contagem
         state.contagensLocal.push(contagem);
         saveContagens();
-        // Enviar nova contagem para o Supabase
         await enviarParaSupabase(contagem);
         return 'novo';
     }
     
     async function enviarParaSupabase(contagem) {
         if (!Database.supabase || !navigator.onLine) {
-            // Offline - adicionar na fila de pendentes
             if (!state.pendingContagens.find(p => p.localId === contagem.localId)) {
                 state.pendingContagens.push(contagem);
                 saveContagens();
@@ -361,7 +365,6 @@
         
         try {
             if (contagem.supabase_id) {
-                // Atualizar existente
                 await Database.updateContagem(contagem.supabase_id, {
                     quantidade: contagem.quantidade,
                     observacoes: contagem.observacoes || '',
@@ -371,9 +374,7 @@
                     usuario_nome: contagem.usuarioNome || ''
                 });
                 contagem.synced = true;
-                console.log('✅ Contagem atualizada no Supabase');
             } else {
-                // Criar nova
                 const res = await Database.saveContagem({
                     rua: contagem.rua,
                     codigo: contagem.codigo,
@@ -388,11 +389,10 @@
                 });
                 contagem.supabase_id = res.id;
                 contagem.synced = true;
-                console.log('✅ Contagem salva no Supabase, ID:', res.id);
             }
             saveContagens();
         } catch (err) {
-            console.error('❌ Erro ao enviar para Supabase:', err.message);
+            console.error('❌ Erro Supabase:', err.message);
             if (!state.pendingContagens.find(p => p.localId === contagem.localId)) {
                 state.pendingContagens.push(contagem);
                 saveContagens();
@@ -402,12 +402,9 @@
     
     async function syncPendingContagens() {
         if (!Database.supabase || !state.pendingContagens.length) return;
-        console.log('🔄 Sincronizando', state.pendingContagens.length, 'contagens pendentes...');
         for (const c of [...state.pendingContagens]) {
             await enviarParaSupabase(c);
-            if (c.synced) {
-                state.pendingContagens = state.pendingContagens.filter(x => x.localId !== c.localId);
-            }
+            if (c.synced) state.pendingContagens = state.pendingContagens.filter(x => x.localId !== c.localId);
         }
         saveContagens();
         renderizarHistorico();
@@ -532,12 +529,9 @@
                     if (inputRua?.value) localStorage.setItem(ULTIMA_RUA_KEY, inputRua.value);
                     const ruaSalva = inputRua?.value || '';
                     if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
-                    if (inputDescricao) inputDescricao.value = '';
-                    if (inputEmbalagem) inputEmbalagem.value = '';
-                    if (inputQuantidade) inputQuantidade.value = '1';
-                    if (inputObservacoes) inputObservacoes.value = '';
-                    if (inputRua) inputRua.value = ruaSalva;
-                    if (inputCodigo) inputCodigo.focus();
+                    if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
+                    if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
+                    if (inputRua) inputRua.value = ruaSalva; if (inputCodigo) inputCodigo.focus();
                 }
                 renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
                 state.salvandoContagem = false;
