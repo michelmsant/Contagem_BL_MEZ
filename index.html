@@ -169,7 +169,7 @@
                 cadastroSuccess.style.display = 'none';
             });
             
-            document.getElementById('btnLogin').addEventListener('click', () => {
+            document.getElementById('btnLogin').addEventListener('click', async () => {
                 const usuario = document.getElementById('loginUsuario').value;
                 const senha = document.getElementById('loginSenha').value;
                 
@@ -179,7 +179,7 @@
                     return;
                 }
                 
-                const resultado = Auth.login(usuario, senha);
+                const resultado = await Auth.login(usuario, senha);
                 
                 if (resultado.sucesso) {
                     loginError.classList.remove('show');
