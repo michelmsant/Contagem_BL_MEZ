@@ -368,14 +368,24 @@
         for (const c of [...state.pendingContagens]) {
             try {
                 const res = await Database.saveContagem({
-                    rua: c.rua, faixa: c.faixa, codigo: c.codigo,
-                    descricao: c.descricao, embalagem: c.embalagem,
-                    quantidade: c.quantidade, observacoes: c.observacoes || '',
-                    data: c.data, hora: c.hora
+                    rua: c.rua,
+                    faixa: c.faixa,
+                    codigo: c.codigo,
+                    descricao: c.descricao,
+                    embalagem: c.embalagem,
+                    quantidade: c.quantidade,
+                    observacoes: c.observacoes || '',
+                    data: c.data,
+                    hora: c.hora,
+                    usuario: c.usuario || '',
+                    usuario_nome: c.usuarioNome || ''
                 });
-                c.synced = true; c.supabase_id = res.id;
+                c.synced = true;
+                c.supabase_id = res.id;
                 state.pendingContagens = state.pendingContagens.filter(x => x.localId !== c.localId);
-            } catch (e) {}
+            } catch (e) {
+                console.error('Erro ao sincronizar:', e);
+            }
         }
         saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
     }
@@ -420,6 +430,7 @@
                     '<td><strong>' + c.quantidade + '</strong></td>' +
                     '<td>' + (c.data || '--') + '</td>' +
                     '<td>' + (c.hora || '--') + '</td>' +
+                    '<td>' + Utils.escapeHTML(c.usuarioNome || c.usuario || '--') + '</td>' +
                     '<td><button class="btn btn-outline btn-sm btn-editar" data-id="' + c.localId + '">✏️</button> <button class="btn btn-danger-text btn-sm btn-excluir" data-id="' + c.localId + '">🗑️</button></td>';
                 tabelaHistorico.appendChild(tr);
             });
@@ -601,7 +612,20 @@
             if (!rua || !faixa || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos', 'error'); return; }
             
             const dh = Utils.formatDataHora(new Date());
-            const contagem = { localId: Utils.generateId(), rua, faixa, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome };
+            const contagem = {
+                localId: Utils.generateId(),
+                rua, faixa, codigo,
+                descricao: desc,
+                embalagem: emb,
+                quantidade: qtd,
+                observacoes: obs,
+                data: dh.data,
+                hora: dh.hora,
+                dataISO: dh.iso,
+                synced: false,
+                usuario: currentUser.usuario,
+                usuarioNome: currentUser.nome
+            };
             const res = await salvarContagem(contagem);
             if (res !== 'cancelar') {
                 Utils.showToast('✅ Salvo!', 'success');
@@ -644,7 +668,13 @@
         
         btnExportCSV?.addEventListener('click', () => {
             if (!isMaster) { Utils.showToast('Acesso restrito', 'error'); return; }
-            const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data || '', Hora: c.hora || '', Observações: c.observacoes || '' }));
+            const dados = getHistoricoFiltrado().map(c => ({
+                Rua: c.rua, Faixa: c.faixa, Código: c.codigo,
+                Descrição: c.descricao, Embalagem: c.embalagem,
+                Quantidade: c.quantidade, Data: c.data || '',
+                Hora: c.hora || '', Observações: c.observacoes || '',
+                Usuário: c.usuarioNome || c.usuario || ''
+            }));
             if (!dados.length) { Utils.showToast('Nenhum dado', 'error'); return; }
             const cab = Object.keys(dados[0]).join(';');
             const csv = '\uFEFF' + [cab, ...dados.map(d => Object.values(d).map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';'))].join('\n');
@@ -653,7 +683,13 @@
         
         btnExportExcel?.addEventListener('click', () => {
             if (!isMaster) { Utils.showToast('Acesso restrito', 'error'); return; }
-            const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data || '', Hora: c.hora || '', Observações: c.observacoes || '' }));
+            const dados = getHistoricoFiltrado().map(c => ({
+                Rua: c.rua, Faixa: c.faixa, Código: c.codigo,
+                Descrição: c.descricao, Embalagem: c.embalagem,
+                Quantidade: c.quantidade, Data: c.data || '',
+                Hora: c.hora || '', Observações: c.observacoes || '',
+                Usuário: c.usuarioNome || c.usuario || ''
+            }));
             if (!dados.length) { Utils.showToast('Nenhum dado', 'error'); return; }
             const ws = XLSX.utils.json_to_sheet(dados);
             const wb = XLSX.utils.book_new();
