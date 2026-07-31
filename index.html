@@ -163,7 +163,7 @@
                 cadastroSuccess.style.display = 'none';
             });
             
-            document.getElementById('btnLogin').addEventListener('click', async () => {
+            document.getElementById('btnLogin').addEventListener('click', () => {
                 const usuario = document.getElementById('loginUsuario').value;
                 const senha = document.getElementById('loginSenha').value;
                 
@@ -173,7 +173,7 @@
                     return;
                 }
                 
-                const resultado = await Auth.login(usuario, senha);
+                const resultado = Auth.login(usuario, senha);
                 
                 if (resultado.sucesso) {
                     loginError.classList.remove('show');
@@ -195,7 +195,7 @@
                 if (e.key === 'Enter') document.getElementById('loginSenha').focus();
             });
             
-            document.getElementById('btnCadastrar').addEventListener('click', async () => {
+            document.getElementById('btnCadastrar').addEventListener('click', () => {
                 const nome = document.getElementById('cadastroNome').value;
                 const usuario = document.getElementById('cadastroUsuario').value;
                 const senha = document.getElementById('cadastroSenha').value;
@@ -216,7 +216,7 @@
                     return;
                 }
                 
-                const resultado = await Auth.cadastrar(nome, usuario, senha);
+                const resultado = Auth.cadastrar(nome, usuario, senha);
                 
                 if (resultado.sucesso) {
                     cadastroSuccess.textContent = resultado.mensagem + ' Redirecionando para login...';

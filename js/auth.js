@@ -1,3 +1,7 @@
+// ============================================================
+// AUTH.JS - Autenticação (Offline First + Supabase)
+// ============================================================
+
 const Auth = {
     STORAGE_KEY: 'blmez_current_user',
     LOCAL_USERS_KEY: 'blmez_users',
@@ -7,7 +11,9 @@ const Auth = {
         usuario: '5461448',
         senha: '5461448',
         role: 'master',
-        ativo: true
+        ativo: true,
+        id: 1,
+        created_at: new Date().toISOString()
     },
     
     init() {
@@ -15,14 +21,35 @@ const Auth = {
     },
     
     _garantirMasterLocal() {
-        const users = this._getLocalUsers();
+        let users = this._getLocalUsers();
         if (!users.find(u => u.usuario === this.MASTER_USER.usuario)) {
-            users.push({ ...this.MASTER_USER, id: Date.now(), created_at: new Date().toISOString() });
+            users.push({ ...this.MASTER_USER });
             localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(users));
         }
     },
     
+    _getLocalUsers() {
+        try {
+            const data = localStorage.getItem(this.LOCAL_USERS_KEY);
+            let users = data ? JSON.parse(data) : [];
+            if (!users.find(u => u.usuario === this.MASTER_USER.usuario)) {
+                users.push({ ...this.MASTER_USER });
+            }
+            return users;
+        } catch (e) {
+            return [{ ...this.MASTER_USER }];
+        }
+    },
+    
+    _saveLocalUsers(users) {
+        try {
+            localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(users));
+        } catch (e) {}
+    },
+    
     async getAllUsers() {
+        let users = this._getLocalUsers();
+        
         if (Database.supabase) {
             try {
                 const { data, error } = await Database.supabase
@@ -31,65 +58,56 @@ const Auth = {
                     .order('created_at', { ascending: false });
                 
                 if (!error && data && data.length > 0) {
-                    localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(data));
-                    return data;
+                    const merged = [...data];
+                    if (!merged.find(u => u.usuario === this.MASTER_USER.usuario)) {
+                        merged.push({ ...this.MASTER_USER });
+                    }
+                    this._saveLocalUsers(merged);
+                    return merged;
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.warn('Supabase indisponível, usando dados locais');
+            }
         }
-        return this._getLocalUsers();
+        
+        return users;
     },
     
     async saveUser(userData) {
+        let users = this._getLocalUsers();
+        const newUser = {
+            ...userData,
+            id: Date.now(),
+            created_at: new Date().toISOString()
+        };
+        users.push(newUser);
+        this._saveLocalUsers(users);
+        
         if (Database.supabase) {
             try {
-                const { data, error } = await Database.supabase
-                    .from('usuarios')
-                    .insert([userData])
-                    .select('id')
-                    .single();
-                
-                if (!error && data) {
-                    const users = this._getLocalUsers();
-                    users.push({ ...userData, id: data.id, created_at: new Date().toISOString() });
-                    localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(users));
-                    return { sucesso: true, id: data.id };
-                }
-            } catch (e) {}
+                await Database.supabase.from('usuarios').insert([userData]);
+            } catch (e) {
+                console.warn('Salvo localmente, Supabase indisponível');
+            }
         }
         
-        const users = this._getLocalUsers();
-        const newUser = { ...userData, id: Date.now(), created_at: new Date().toISOString() };
-        users.push(newUser);
-        localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(users));
         return { sucesso: true, id: newUser.id };
     },
     
     async updateUser(usuario, updates) {
-        if (Database.supabase) {
-            try {
-                const { error } = await Database.supabase
-                    .from('usuarios')
-                    .update(updates)
-                    .eq('usuario', usuario);
-                
-                if (!error) {
-                    const users = this._getLocalUsers();
-                    const idx = users.findIndex(u => u.usuario === usuario);
-                    if (idx >= 0) {
-                        users[idx] = { ...users[idx], ...updates };
-                        localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(users));
-                    }
-                    return { sucesso: true };
-                }
-            } catch (e) {}
-        }
-        
-        const users = this._getLocalUsers();
+        let users = this._getLocalUsers();
         const idx = users.findIndex(u => u.usuario === usuario);
         if (idx >= 0) {
             users[idx] = { ...users[idx], ...updates };
-            localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(users));
+            this._saveLocalUsers(users);
         }
+        
+        if (Database.supabase) {
+            try {
+                await Database.supabase.from('usuarios').update(updates).eq('usuario', usuario);
+            } catch (e) {}
+        }
+        
         return { sucesso: true };
     },
     
@@ -98,66 +116,76 @@ const Auth = {
             return { sucesso: false, mensagem: 'Não é possível excluir o usuário Master principal.' };
         }
         
+        let users = this._getLocalUsers();
+        users = users.filter(u => u.usuario !== usuario);
+        this._saveLocalUsers(users);
+        
         if (Database.supabase) {
             try {
-                const { error } = await Database.supabase
-                    .from('usuarios')
-                    .delete()
-                    .eq('usuario', usuario);
-                
-                if (!error) {
-                    const users = this._getLocalUsers();
-                    const filtered = users.filter(u => u.usuario !== usuario);
-                    localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(filtered));
-                    return { sucesso: true };
-                }
+                await Database.supabase.from('usuarios').delete().eq('usuario', usuario);
             } catch (e) {}
         }
         
-        const users = this._getLocalUsers();
-        const filtered = users.filter(u => u.usuario !== usuario);
-        localStorage.setItem(this.LOCAL_USERS_KEY, JSON.stringify(filtered));
         return { sucesso: true };
     },
     
-    _getLocalUsers() {
-        try {
-            const data = localStorage.getItem(this.LOCAL_USERS_KEY);
-            const users = data ? JSON.parse(data) : [];
-            if (!users.find(u => u.usuario === this.MASTER_USER.usuario)) {
-                users.push({ ...this.MASTER_USER, id: Date.now(), created_at: new Date().toISOString() });
-            }
-            return users;
-        } catch (e) {
-            return [{ ...this.MASTER_USER, id: Date.now(), created_at: new Date().toISOString() }];
+    cadastrar(nome, usuario, senha) {
+        if (!nome || nome.trim().length < 3) {
+            return { sucesso: false, mensagem: 'Nome deve ter pelo menos 3 caracteres.' };
         }
-    },
-    
-    async cadastrar(nome, usuario, senha) {
-        if (!nome || nome.trim().length < 3) return { sucesso: false, mensagem: 'Nome deve ter pelo menos 3 caracteres.' };
-        if (!usuario || usuario.trim().length < 4) return { sucesso: false, mensagem: 'Usuário deve ter pelo menos 4 caracteres.' };
-        if (!senha || senha.trim().length < 4) return { sucesso: false, mensagem: 'Senha deve ter pelo menos 4 caracteres.' };
+        if (!usuario || usuario.trim().length < 4) {
+            return { sucesso: false, mensagem: 'Usuário deve ter pelo menos 4 caracteres.' };
+        }
+        if (!senha || senha.trim().length < 4) {
+            return { sucesso: false, mensagem: 'Senha deve ter pelo menos 4 caracteres.' };
+        }
         
-        const users = await this.getAllUsers();
+        const users = this._getLocalUsers();
         if (users.find(u => u.usuario === usuario.trim())) {
             return { sucesso: false, mensagem: 'Este nome de usuário já está em uso.' };
         }
         
-        return await this.saveUser({
+        const newUser = {
             nome: nome.trim(),
             usuario: usuario.trim(),
             senha: senha.trim(),
             role: 'user',
-            ativo: true
-        });
+            ativo: true,
+            id: Date.now(),
+            created_at: new Date().toISOString()
+        };
+        
+        users.push(newUser);
+        this._saveLocalUsers(users);
+        
+        if (Database.supabase) {
+            Database.supabase.from('usuarios').insert([{
+                nome: nome.trim(),
+                usuario: usuario.trim(),
+                senha: senha.trim(),
+                role: 'user',
+                ativo: true
+            }]).then(() => {}).catch(() => {});
+        }
+        
+        return { sucesso: true, mensagem: 'Cadastro realizado com sucesso!' };
     },
     
-    async login(usuario, senha) {
-        const users = await this.getAllUsers();
+    login(usuario, senha) {
+        if (!usuario || !senha) {
+            return { sucesso: false, mensagem: 'Preencha todos os campos.' };
+        }
+        
+        const users = this._getLocalUsers();
         const user = users.find(u => u.usuario === usuario.trim() && u.senha === senha.trim());
         
-        if (!user) return { sucesso: false, mensagem: 'Usuário ou senha incorretos.' };
-        if (user.ativo === false) return { sucesso: false, mensagem: 'Usuário desativado. Contate o administrador.' };
+        if (!user) {
+            return { sucesso: false, mensagem: 'Usuário ou senha incorretos.' };
+        }
+        
+        if (user.ativo === false) {
+            return { sucesso: false, mensagem: 'Usuário desativado. Contate o administrador.' };
+        }
         
         const sessionData = {
             nome: user.nome,
@@ -179,7 +207,9 @@ const Auth = {
         try {
             const session = localStorage.getItem(this.STORAGE_KEY);
             return session ? JSON.parse(session) : null;
-        } catch (e) { return null; }
+        } catch (e) {
+            return null;
+        }
     },
     
     isMaster() {
