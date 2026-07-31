@@ -81,6 +81,28 @@
         salvandoContagem: false
     };
     
+    // ============ CONTROLE DO CAMPO FAIXA ============
+    function atualizarCampoFaixa() {
+        const ruaSelecionada = inputRua?.value || '';
+        
+        if (ruaSelecionada === 'MEZ' || ruaSelecionada === 'DOC') {
+            if (inputFaixa) {
+                inputFaixa.value = '';
+                inputFaixa.disabled = true;
+                inputFaixa.style.opacity = '0.5';
+                inputFaixa.style.cursor = 'not-allowed';
+                inputFaixa.placeholder = 'Não se aplica';
+            }
+        } else {
+            if (inputFaixa) {
+                inputFaixa.disabled = false;
+                inputFaixa.style.opacity = '1';
+                inputFaixa.style.cursor = 'text';
+                inputFaixa.placeholder = 'Número';
+            }
+        }
+    }
+    
     // ============ INICIALIZAÇÃO ============
     async function init() {
         console.log('🚀 Iniciando Contagem BL_MEZ...');
@@ -106,6 +128,7 @@
         if (ultimaRua && inputRua) {
             inputRua.value = ultimaRua;
         }
+        atualizarCampoFaixa();
         
         renderizarHistorico();
         renderizarDashboard();
@@ -385,7 +408,7 @@
         if (inputQuantidade) inputQuantidade.value = c.quantidade; if (inputObservacoes) inputObservacoes.value = c.observacoes||'';
         state.contagensLocal.splice(index,1); state.pendingContagens = state.pendingContagens.filter(p=>p.localId!==c.localId);
         saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
-        abrirSecao('contagem'); Utils.showToast('Editando...','success');
+        abrirSecao('contagem'); atualizarCampoFaixa(); Utils.showToast('Editando...','success');
     }
     
     async function excluirContagem(index) {
@@ -442,6 +465,11 @@
         }
         btnRecarregarBase?.addEventListener('click', carregarBaseDoSupabase);
         
+        // Controle do campo Faixa baseado na Rua
+        if (inputRua) {
+            inputRua.addEventListener('change', atualizarCampoFaixa);
+        }
+        
         // Pesquisa de código
         if (inputCodigo) {
             inputCodigo.addEventListener('input', function() { this.classList.remove('input-success','input-error'); });
@@ -452,31 +480,40 @@
         // Salvar
         btnSalvar?.addEventListener('click', () => {
             if (state.salvandoContagem) return;
+            
             const rua = inputRua?.value || '';
-            const faixa = parseInt(inputFaixa?.value) || 0;
+            const precisaFaixa = rua !== 'MEZ' && rua !== 'DOC';
+            const faixa = precisaFaixa ? (parseInt(inputFaixa?.value) || 0) : 0;
             const codigo = inputCodigo?.value.trim() || '';
             const desc = inputDescricao?.value.trim() || '';
             const emb = inputEmbalagem?.value.trim() || '';
             const qtd = parseInt(inputQuantidade?.value) || 0;
             const obs = inputObservacoes?.value.trim() || '';
-            if (!rua || !faixa || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos os campos','error'); return; }
+            
+            if (!rua || (precisaFaixa && !faixa) || !codigo || !desc || qtd <= 0) {
+                Utils.showToast('⚠️ Preencha todos os campos', 'error');
+                return;
+            }
+            
             state.salvandoContagem = true;
             const dh = Utils.formatDataHora(new Date());
             const contagem = { localId: Utils.generateId(), rua, faixa, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome };
+            
             salvarContagem(contagem).then(res => {
                 if (res !== 'cancelar') {
                     Utils.showToast('✅ Salvo!','success');
-                    // Salvar última rua usada
                     if (inputRua && inputRua.value) localStorage.setItem(ULTIMA_RUA_KEY, inputRua.value);
                     const ruaSalva = inputRua?.value || '';
-                    if (inputFaixa) inputFaixa.value = '';
+                    if (inputFaixa) { inputFaixa.value = ''; }
                     if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
                     if (inputDescricao) inputDescricao.value = '';
                     if (inputEmbalagem) inputEmbalagem.value = '';
                     if (inputQuantidade) inputQuantidade.value = '1';
                     if (inputObservacoes) inputObservacoes.value = '';
                     if (inputRua) inputRua.value = ruaSalva;
-                    if (inputFaixa) inputFaixa.focus();
+                    atualizarCampoFaixa();
+                    if (precisaFaixa) { if (inputFaixa) inputFaixa.focus(); }
+                    else { if (inputCodigo) inputCodigo.focus(); }
                 }
                 renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
                 state.salvandoContagem = false;
@@ -492,7 +529,10 @@
             if (inputQuantidade) inputQuantidade.value = '1';
             if (inputObservacoes) inputObservacoes.value = '';
             if (inputRua) inputRua.value = ruaAtual;
-            if (inputFaixa) inputFaixa.focus();
+            atualizarCampoFaixa();
+            const precisaFaixa = ruaAtual !== 'MEZ' && ruaAtual !== 'DOC';
+            if (precisaFaixa) { if (inputFaixa) inputFaixa.focus(); }
+            else { if (inputCodigo) inputCodigo.focus(); }
         });
         
         // Câmera
