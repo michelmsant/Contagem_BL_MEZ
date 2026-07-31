@@ -283,48 +283,100 @@
     }
     
     async function salvarContagem(contagem) {
-        const idx = state.contagensLocal.findIndex(c =>
-            c.rua === contagem.rua && c.faixa === contagem.faixa && c.codigo === contagem.codigo
-        );
-        
-        if (idx >= 0) {
-            return new Promise(resolve => {
-                state.resolvendoDuplicidade = (op) => {
-                    if (op === 'editar') state.contagensLocal[idx] = { ...contagem, synced: false, localId: state.contagensLocal[idx].localId };
-                    else if (op === 'somar') { state.contagensLocal[idx].quantidade += contagem.quantidade; state.contagensLocal[idx].synced = false; }
-                    saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
-                    state.resolvendoDuplicidade = null;
-                    resolve(op);
-                };
-                msgDuplicidade.innerHTML = '<strong>' + state.contagensLocal[idx].rua + '</strong> / Faixa ' + state.contagensLocal[idx].faixa + '<br>Qtd: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
-                modalDuplicidade.style.display = 'flex';
-            });
-        }
-        
-        state.contagensLocal.push(contagem);
-        state.pendingContagens.push(contagem);
-        saveContagens();
-        if (Database.supabase && navigator.onLine) await syncPendingContagens();
-        return 'novo';
+    const idx = state.contagensLocal.findIndex(c =>
+        c.rua === contagem.rua && c.faixa === contagem.faixa && c.codigo === contagem.codigo
+    );
+    
+    if (idx >= 0) {
+        return new Promise(resolve => {
+            state.resolvendoDuplicidade = async (op) => {
+                state.resolvendoDuplicidade = null;
+                
+                if (op === 'editar') {
+                    // Atualizar contagem existente
+                    state.contagensLocal[idx] = { 
+                        ...contagem, 
+                        synced: false, 
+                        localId: state.contagensLocal[idx].localId,
+                        supabase_id: state.contagensLocal[idx].supabase_id || null
+                    };
+                } else if (op === 'somar') {
+                    // Somar quantidades
+                    state.contagensLocal[idx].quantidade += contagem.quantidade;
+                    state.contagensLocal[idx].observacoes = contagem.observacoes || state.contagensLocal[idx].observacoes || '';
+                    state.contagensLocal[idx].data = contagem.data;
+                    state.contagensLocal[idx].hora = contagem.hora;
+                    state.contagensLocal[idx].dataISO = contagem.dataISO;
+                    state.contagensLocal[idx].synced = false;
+                    state.contagensLocal[idx].usuario = contagem.usuario;
+                    state.contagensLocal[idx].usuarioNome = contagem.usuarioNome;
+                }
+                
+                saveContagens();
+                
+                // ⚡ ENVIAR ATUALIZAÇÃO PARA O SUPABASE
+                if (Database.supabase && navigator.onLine && state.contagensLocal[idx].supabase_id) {
+                    try {
+                        const c = state.contagensLocal[idx];
+                        await Database.supabase
+                            .from('contagens')
+                            .update({
+                                quantidade: c.quantidade,
+                                observacoes: c.observacoes || '',
+                                data: c.data,
+                                hora: c.hora,
+                                usuario: c.usuario || '',
+                                usuario_nome: c.usuarioNome || ''
+                            })
+                            .eq('id', c.supabase_id);
+                        
+                        state.contagensLocal[idx].synced = true;
+                        saveContagens();
+                        console.log('✅ Contagem atualizada no Supabase');
+                    } catch (err) {
+                        console.error('❌ Erro ao atualizar no Supabase:', err);
+                        // Adiciona na fila de pendentes para sincronizar depois
+                        state.pendingContagens.push(state.contagensLocal[idx]);
+                        saveContagens();
+                    }
+                } else if (Database.supabase && navigator.onLine && !state.contagensLocal[idx].supabase_id) {
+                    // Se não tem supabase_id, tenta criar um novo registro
+                    try {
+                        const c = state.contagensLocal[idx];
+                        const res = await Database.saveContagem({
+                            rua: c.rua, faixa: c.faixa, codigo: c.codigo,
+                            descricao: c.descricao, embalagem: c.embalagem,
+                            quantidade: c.quantidade, observacoes: c.observacoes || '',
+                            data: c.data, hora: c.hora,
+                            usuario: c.usuario || '', usuario_nome: c.usuarioNome || ''
+                        });
+                        state.contagensLocal[idx].supabase_id = res.id;
+                        state.contagensLocal[idx].synced = true;
+                        saveContagens();
+                        console.log('✅ Contagem criada no Supabase');
+                    } catch (err) {
+                        console.error('❌ Erro ao criar no Supabase:', err);
+                    }
+                }
+                
+                renderizarHistorico();
+                renderizarDashboard();
+                atualizarEstatisticas();
+                resolve(op);
+            };
+            
+            msgDuplicidade.innerHTML = '<strong>' + state.contagensLocal[idx].rua + '</strong> / Faixa ' + state.contagensLocal[idx].faixa + '<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
+            modalDuplicidade.style.display = 'flex';
+        });
     }
     
-    async function syncPendingContagens() {
-        if (!Database.supabase || !state.pendingContagens.length) return;
-        for (const c of [...state.pendingContagens]) {
-            try {
-                const res = await Database.saveContagem({
-                    rua: c.rua, faixa: c.faixa, codigo: c.codigo,
-                    descricao: c.descricao, embalagem: c.embalagem,
-                    quantidade: c.quantidade, observacoes: c.observacoes || '',
-                    data: c.data, hora: c.hora,
-                    usuario: c.usuario || '', usuario_nome: c.usuarioNome || ''
-                });
-                c.synced = true; c.supabase_id = res.id;
-                state.pendingContagens = state.pendingContagens.filter(x => x.localId !== c.localId);
-            } catch (e) {}
-        }
-        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
-    }
+    // Nova contagem
+    state.contagensLocal.push(contagem);
+    state.pendingContagens.push(contagem);
+    saveContagens();
+    if (Database.supabase && navigator.onLine) await syncPendingContagens();
+    return 'novo';
+}
     
     // ============ RENDER ============
     function getHistoricoFiltrado() {
