@@ -61,7 +61,22 @@
                     <div class="card">
                         <div class="card-header"><span class="icon">🔢</span> Contagem de Estoque</div>
                         <div class="form-grid">
-                            <div class="form-group"><label>Rua</label><input type="text" id="rua" placeholder="Ex: BL1"></div>
+                            <div class="form-group">
+                                <label>Rua</label>
+                                <select id="rua" style="padding:10px 12px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.95rem;font-family:var(--font);background:var(--surface);color:var(--text);width:100%;cursor:pointer;">
+                                    <option value="">Selecione a rua...</option>
+                                    <option value="BL1">BL1</option>
+                                    <option value="BL2">BL2</option>
+                                    <option value="BL3">BL3</option>
+                                    <option value="BL4">BL4</option>
+                                    <option value="BL5">BL5</option>
+                                    <option value="BL6">BL6</option>
+                                    <option value="BL7">BL7</option>
+                                    <option value="BL8">BL8</option>
+                                    <option value="MEZ">MEZ</option>
+                                    <option value="DOC">DOC</option>
+                                </select>
+                            </div>
                             <div class="form-group"><label>Faixa</label><input type="number" id="faixa" placeholder="Número" min="1"></div>
                             <div class="form-group">
                                 <label>Código</label>
