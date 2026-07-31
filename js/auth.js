@@ -1,5 +1,5 @@
 // ============================================================
-// AUTH.JS - Autenticação (Offline First + Supabase Sync)
+// AUTH.JS - Autenticação (Offline First + Supabase)
 // ============================================================
 
 const Auth = {
@@ -72,16 +72,24 @@ const Auth = {
     },
     
     async saveUserToSupabase(userData) {
-        if (!Database.supabase) return;
+        if (!Database.supabase) {
+            console.warn('⚠️ Supabase não conectado. Usuário salvo apenas localmente.');
+            return;
+        }
         try {
-            await Database.supabase.from('usuarios').insert([{
+            const { error } = await Database.supabase.from('usuarios').insert([{
                 nome: userData.nome,
                 usuario: userData.usuario,
                 senha: userData.senha,
                 role: userData.role || 'user',
                 ativo: true
             }]);
-            console.log('✅ Usuário salvo no Supabase');
+            
+            if (error) {
+                console.error('❌ Erro Supabase:', error.message);
+            } else {
+                console.log('✅ Usuário salvo no Supabase:', userData.usuario);
+            }
         } catch (e) {
             console.warn('⚠️ Erro ao salvar no Supabase:', e.message);
         }
@@ -110,7 +118,7 @@ const Auth = {
         users.push(newUser);
         this._saveLocalUsers(users);
         
-        // Salvar no Supabase
+        // Enviar para o Supabase
         this.saveUserToSupabase(newUser);
         
         return { sucesso: true, mensagem: 'Cadastro realizado com sucesso!' };
@@ -127,6 +135,7 @@ const Auth = {
         if (Database.supabase) {
             try {
                 await Database.supabase.from('usuarios').update(updates).eq('usuario', usuario);
+                console.log('✅ Usuário atualizado no Supabase:', usuario);
             } catch (e) {}
         }
         
@@ -145,6 +154,7 @@ const Auth = {
         if (Database.supabase) {
             try {
                 await Database.supabase.from('usuarios').delete().eq('usuario', usuario);
+                console.log('✅ Usuário excluído do Supabase:', usuario);
             } catch (e) {}
         }
         
