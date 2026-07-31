@@ -82,7 +82,6 @@
     // ============ INICIALIZAÇÃO ============
     async function init() {
         console.log('🚀 Iniciando Contagem BL_MEZ...');
-        console.log('👤 Usuário:', currentUser.nome, '| Master:', isMaster);
         
         if (userNameDisplay) {
             userNameDisplay.textContent = '👤 ' + (currentUser.nome || currentUser.usuario);
@@ -105,19 +104,15 @@
         atualizarEstatisticas();
         atualizarBaseInfo();
         
-        console.log('🔌 Conectando ao Supabase...');
         const dbOk = Database.init();
         state.dbConnected = dbOk;
         updateConnectionDot();
         
         if (dbOk) {
-            console.log('🔍 Testando conexão...');
             const testOk = await Database.testConnection();
             state.dbConnected = testOk;
             updateConnectionDot();
-            
             if (testOk) {
-                console.log('✅ Conectado! Carregando base...');
                 await carregarBaseDoSupabase();
                 await syncPendingContagens();
             }
@@ -134,14 +129,11 @@
         
         setupEventListeners();
         abrirSecao('contagem');
-        
-        console.log('✅ Pronto!');
+        console.log('✅ Pronto! Produtos:', state.produtosMapCodAcesso.size);
     }
     
     function updateConnectionDot() {
-        if (connectionDot) {
-            connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
-        }
+        if (connectionDot) connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
     }
     
     // ============ SIDEBAR ============
@@ -162,11 +154,8 @@
         });
         
         const mapa = {
-            contagem: 'secaoContagem',
-            base: 'secaoBase',
-            historico: 'secaoHistorico',
-            dashboard: 'secaoDashboard',
-            usuarios: 'secaoUsuarios'
+            contagem: 'secaoContagem', base: 'secaoBase', historico: 'secaoHistorico',
+            dashboard: 'secaoDashboard', usuarios: 'secaoUsuarios'
         };
         
         const secao = document.getElementById(mapa[nome]);
@@ -196,6 +185,7 @@
                 Database.saveBaseMeta(state.baseMeta);
                 atualizarInfoImportacao();
                 atualizarBaseInfo();
+                Utils.showToast('✅ ' + produtos.length.toLocaleString('pt-BR') + ' produtos carregados', 'success');
             }
         } catch (err) {}
     }
@@ -205,7 +195,14 @@
         state.produtosMapSeqProduto.clear();
         for (const p of produtos) {
             const emb = p.embalagem && p.qtdembalagem ? p.embalagem + ' x ' + p.qtdembalagem : (p.embalagem || p.qtdembalagem || '');
-            const prod = { seqProduto: p.seqproduto || '', descCompleta: p.desccompleta || '', codAcesso: p.codacesso || '', embalagem: p.embalagem || '', qtdEmbalagem: p.qtdembalagem || '', embalagemFormatada: emb };
+            const prod = {
+                seqProduto: p.seqproduto || '',
+                descCompleta: p.desccompleta || '',
+                codAcesso: p.codacesso || '',
+                embalagem: p.embalagem || '',
+                qtdEmbalagem: p.qtdembalagem || '',
+                embalagemFormatada: emb
+            };
             if (prod.codAcesso) state.produtosMapCodAcesso.set(prod.codAcesso, prod);
             if (prod.seqProduto) state.produtosMapSeqProduto.set(prod.seqProduto, prod);
         }
@@ -233,9 +230,9 @@
             construirIndices(arr.map(p => ({ seqproduto: p.seqproduto, desccompleta: p.desccompleta, codacesso: p.codacesso, embalagem: p.embalagem, qtdembalagem: p.qtdembalagem })));
             state.baseMeta = { nomeArquivo, totalRegistros: state.produtosMapCodAcesso.size, dataHoraImportacao: new Date().toISOString() };
             Database.saveBaseMeta(state.baseMeta);
-            atualizarInfoImportacao();
-            atualizarBaseInfo();
+            atualizarInfoImportacao(); atualizarBaseInfo();
             importStatusMaster.innerHTML = '<span style="color:green">✅ ' + state.produtosMapCodAcesso.size + ' produtos</span>';
+            Utils.showToast('✅ ' + state.produtosMapCodAcesso.size + ' produtos importados!', 'success');
         } catch (err) {
             importStatusMaster.innerHTML = '<span style="color:red">❌ ' + Utils.escapeHTML(err.message) + '</span>';
         } finally {
@@ -250,7 +247,7 @@
             return;
         }
         const dh = Utils.formatDataHora(state.baseMeta.dataHoraImportacao);
-        importInfo.innerHTML = '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span> <span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span> <span>📅 ' + dh.data + ' ' + dh.hora + '</span> <span class="badge">☁️ ' + (state.dbConnected ? 'Supabase' : 'Local') + '</span>';
+        importInfo.innerHTML = '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span> <span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span> <span>📅 ' + dh.data + ' ' + dh.hora + '</span>';
     }
     
     function atualizarBaseInfo() {
@@ -264,7 +261,45 @@
         if (state.produtosMapCodAcesso.has(c)) return state.produtosMapCodAcesso.get(c);
         if (state.produtosMapSeqProduto.has(c)) return state.produtosMapSeqProduto.get(c);
         for (const [k, v] of state.produtosMapCodAcesso) if (k.startsWith(c)) return v;
+        for (const [k, v] of state.produtosMapSeqProduto) if (k.startsWith(c)) return v;
         return null;
+    }
+    
+    // ============ PROCESSAR CÓDIGO ============
+    function processarCodigo(codigoDigitado) {
+        if (!codigoDigitado?.trim()) {
+            if (inputDescricao) inputDescricao.value = '';
+            if (inputEmbalagem) inputEmbalagem.value = '';
+            return;
+        }
+        
+        if (!state.produtosMapCodAcesso.size) {
+            Utils.showToast('⚠️ Base vazia. Importe um arquivo TXT primeiro.', 'error');
+            return;
+        }
+        
+        const produto = pesquisarProduto(codigoDigitado);
+        
+        if (produto) {
+            if (inputDescricao) inputDescricao.value = produto.descCompleta;
+            if (inputEmbalagem) inputEmbalagem.value = produto.embalagemFormatada;
+            if (inputCodigo) {
+                inputCodigo.value = produto.seqProduto || codigoDigitado;
+                inputCodigo.classList.add('input-success');
+                setTimeout(() => inputCodigo?.classList.remove('input-success'), 1500);
+            }
+            Utils.playBeep();
+            Utils.vibrate(40);
+            console.log('✅ Produto encontrado:', produto.seqProduto, '-', produto.descCompleta);
+        } else {
+            if (inputDescricao) inputDescricao.value = '';
+            if (inputEmbalagem) inputEmbalagem.value = '';
+            if (inputCodigo) {
+                inputCodigo.classList.add('input-error');
+                setTimeout(() => inputCodigo?.classList.remove('input-error'), 1500);
+            }
+            Utils.showToast('❌ Produto não encontrado na base.', 'error');
+        }
     }
     
     // ============ CONTAGENS ============
@@ -282,114 +317,94 @@
         } catch (e) {}
     }
     
-async function salvarContagem(contagem) {
-    const idx = state.contagensLocal.findIndex(c =>
-        c.rua === contagem.rua && c.faixa === contagem.faixa && c.codigo === contagem.codigo
-    );
-    
-    if (idx >= 0) {
-        return new Promise(resolve => {
-            state.resolvendoDuplicidade = async (op) => {
-                state.resolvendoDuplicidade = null;
-                const c = state.contagensLocal[idx];
-                
-                if (op === 'editar') {
-                    // Atualizar contagem existente
-                    state.contagensLocal[idx] = { 
-                        ...contagem, 
-                        synced: false, 
-                        localId: c.localId,
-                        supabase_id: c.supabase_id || null
-                    };
-                } else if (op === 'somar') {
-                    // Somar quantidades
-                    state.contagensLocal[idx].quantidade += contagem.quantidade;
-                    state.contagensLocal[idx].observacoes = contagem.observacoes || c.observacoes || '';
-                    state.contagensLocal[idx].data = contagem.data;
-                    state.contagensLocal[idx].hora = contagem.hora;
-                    state.contagensLocal[idx].dataISO = contagem.dataISO;
-                    state.contagensLocal[idx].synced = false;
-                    state.contagensLocal[idx].usuario = contagem.usuario;
-                    state.contagensLocal[idx].usuarioNome = contagem.usuarioNome;
-                }
-                
-                saveContagens();
-                
-                // ⚡ ATUALIZAR NO SUPABASE
-                const atualizado = state.contagensLocal[idx];
-                
-                if (Database.supabase && navigator.onLine) {
-                    if (atualizado.supabase_id) {
-                        // Atualizar registro existente no Supabase
-                        try {
-                            await Database.updateContagem(atualizado.supabase_id, {
-                                quantidade: atualizado.quantidade,
-                                observacoes: atualizado.observacoes || '',
-                                data: atualizado.data,
-                                hora: atualizado.hora,
-                                usuario: atualizado.usuario || '',
-                                usuario_nome: atualizado.usuarioNome || ''
-                            });
-                            atualizado.synced = true;
-                            saveContagens();
-                            console.log('✅ Contagem atualizada no Supabase, ID:', atualizado.supabase_id);
-                        } catch (err) {
-                            console.error('❌ Erro ao atualizar no Supabase:', err.message);
-                            state.pendingContagens.push(atualizado);
-                            saveContagens();
-                        }
-                    } else {
-                        // Criar novo registro no Supabase
-                        try {
-                            const res = await Database.saveContagem({
-                                rua: atualizado.rua,
-                                faixa: atualizado.faixa,
-                                codigo: atualizado.codigo,
-                                descricao: atualizado.descricao,
-                                embalagem: atualizado.embalagem,
-                                quantidade: atualizado.quantidade,
-                                observacoes: atualizado.observacoes || '',
-                                data: atualizado.data,
-                                hora: atualizado.hora,
-                                usuario: atualizado.usuario || '',
-                                usuario_nome: atualizado.usuarioNome || ''
-                            });
-                            atualizado.supabase_id = res.id;
-                            atualizado.synced = true;
-                            saveContagens();
-                            console.log('✅ Contagem criada no Supabase, ID:', res.id);
-                        } catch (err) {
-                            console.error('❌ Erro ao criar no Supabase:', err.message);
-                            state.pendingContagens.push(atualizado);
-                            saveContagens();
+    async function salvarContagem(contagem) {
+        const idx = state.contagensLocal.findIndex(c =>
+            c.rua === contagem.rua && c.faixa === contagem.faixa && c.codigo === contagem.codigo
+        );
+        
+        if (idx >= 0) {
+            return new Promise(resolve => {
+                state.resolvendoDuplicidade = async (op) => {
+                    state.resolvendoDuplicidade = null;
+                    const c = state.contagensLocal[idx];
+                    
+                    if (op === 'editar') {
+                        state.contagensLocal[idx] = { ...contagem, synced: false, localId: c.localId, supabase_id: c.supabase_id || null };
+                    } else if (op === 'somar') {
+                        state.contagensLocal[idx].quantidade += contagem.quantidade;
+                        state.contagensLocal[idx].observacoes = contagem.observacoes || c.observacoes || '';
+                        state.contagensLocal[idx].data = contagem.data;
+                        state.contagensLocal[idx].hora = contagem.hora;
+                        state.contagensLocal[idx].dataISO = contagem.dataISO;
+                        state.contagensLocal[idx].synced = false;
+                        state.contagensLocal[idx].usuario = contagem.usuario;
+                        state.contagensLocal[idx].usuarioNome = contagem.usuarioNome;
+                    }
+                    
+                    saveContagens();
+                    const atualizado = state.contagensLocal[idx];
+                    
+                    if (Database.supabase && navigator.onLine) {
+                        if (atualizado.supabase_id) {
+                            try {
+                                await Database.updateContagem(atualizado.supabase_id, {
+                                    quantidade: atualizado.quantidade,
+                                    observacoes: atualizado.observacoes || '',
+                                    data: atualizado.data, hora: atualizado.hora,
+                                    usuario: atualizado.usuario || '', usuario_nome: atualizado.usuarioNome || ''
+                                });
+                                atualizado.synced = true;
+                                saveContagens();
+                            } catch (err) { state.pendingContagens.push(atualizado); saveContagens(); }
+                        } else {
+                            try {
+                                const res = await Database.saveContagem({
+                                    rua: atualizado.rua, faixa: atualizado.faixa, codigo: atualizado.codigo,
+                                    descricao: atualizado.descricao, embalagem: atualizado.embalagem,
+                                    quantidade: atualizado.quantidade, observacoes: atualizado.observacoes || '',
+                                    data: atualizado.data, hora: atualizado.hora,
+                                    usuario: atualizado.usuario || '', usuario_nome: atualizado.usuarioNome || ''
+                                });
+                                atualizado.supabase_id = res.id;
+                                atualizado.synced = true;
+                                saveContagens();
+                            } catch (err) { state.pendingContagens.push(atualizado); saveContagens(); }
                         }
                     }
-                } else {
-                    // Offline - adiciona na fila de pendentes
-                    if (!state.pendingContagens.find(p => p.localId === atualizado.localId)) {
-                        state.pendingContagens.push(atualizado);
-                        saveContagens();
-                    }
-                }
+                    
+                    renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+                    resolve(op);
+                };
                 
-                renderizarHistorico();
-                renderizarDashboard();
-                atualizarEstatisticas();
-                resolve(op);
-            };
-            
-            msgDuplicidade.innerHTML = '<strong>' + state.contagensLocal[idx].rua + '</strong> / Faixa ' + state.contagensLocal[idx].faixa + '<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
-            modalDuplicidade.style.display = 'flex';
-        });
+                msgDuplicidade.innerHTML = '<strong>' + state.contagensLocal[idx].rua + '</strong> / Faixa ' + state.contagensLocal[idx].faixa + '<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
+                modalDuplicidade.style.display = 'flex';
+            });
+        }
+        
+        state.contagensLocal.push(contagem);
+        state.pendingContagens.push(contagem);
+        saveContagens();
+        if (Database.supabase && navigator.onLine) await syncPendingContagens();
+        return 'novo';
     }
     
-    // Nova contagem
-    state.contagensLocal.push(contagem);
-    state.pendingContagens.push(contagem);
-    saveContagens();
-    if (Database.supabase && navigator.onLine) await syncPendingContagens();
-    return 'novo';
-}
+    async function syncPendingContagens() {
+        if (!Database.supabase || !state.pendingContagens.length) return;
+        for (const c of [...state.pendingContagens]) {
+            try {
+                const res = await Database.saveContagem({
+                    rua: c.rua, faixa: c.faixa, codigo: c.codigo,
+                    descricao: c.descricao, embalagem: c.embalagem,
+                    quantidade: c.quantidade, observacoes: c.observacoes || '',
+                    data: c.data, hora: c.hora,
+                    usuario: c.usuario || '', usuario_nome: c.usuarioNome || ''
+                });
+                c.synced = true; c.supabase_id = res.id;
+                state.pendingContagens = state.pendingContagens.filter(x => x.localId !== c.localId);
+            } catch (e) {}
+        }
+        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+    }
     
     // ============ RENDER ============
     function getHistoricoFiltrado() {
@@ -487,28 +502,12 @@ async function salvarContagem(contagem) {
             if (nenhumUsuario) nenhumUsuario.style.display = 'none';
             users.forEach(u => {
                 const tr = document.createElement('tr');
-                const dataCriacao = u.created_at ? Utils.formatDataHora(u.created_at) : { data: '--', hora: '--' };
-                tr.innerHTML = '<td>' + Utils.escapeHTML(u.nome) + '</td><td>' + Utils.escapeHTML(u.usuario) + '</td><td><span class="badge" style="background:' + (u.role === 'master' ? '#FFD700' : 'var(--blue-light)') + ';color:' + (u.role === 'master' ? '#000' : 'var(--blue)') + ';">' + (u.role === 'master' ? '👑 Master' : '👤 Usuário') + '</span></td><td>' + (u.ativo !== false ? '🟢 Ativo' : '🔴 Inativo') + '</td><td>' + dataCriacao.data + '</td><td>' + (u.usuario !== '5461448' ? '<button class="btn btn-outline btn-sm btn-toggle-user" data-user="' + u.usuario + '" data-role="' + (u.role === 'master' ? 'user' : 'master') + '">' + (u.role === 'master' ? '⬇ Tornar Usuário' : '⬆ Tornar Master') + '</button> <button class="btn btn-danger-text btn-sm btn-delete-user" data-user="' + u.usuario + '">🗑️</button>' : '<span style="font-size:0.75rem;color:var(--text-muted);">Admin principal</span>') + '</td>';
+                const dc = u.created_at ? Utils.formatDataHora(u.created_at) : { data: '--', hora: '--' };
+                tr.innerHTML = '<td>' + Utils.escapeHTML(u.nome) + '</td><td>' + Utils.escapeHTML(u.usuario) + '</td><td>' + (u.role === 'master' ? '👑 Master' : '👤 Usuário') + '</td><td>' + (u.ativo !== false ? '🟢' : '🔴') + '</td><td>' + dc.data + '</td><td>' + (u.usuario !== '5461448' ? '<button class="btn btn-outline btn-sm btn-toggle-user" data-user="' + u.usuario + '" data-role="' + (u.role === 'master' ? 'user' : 'master') + '">' + (u.role === 'master' ? '⬇' : '⬆') + '</button> <button class="btn btn-danger-text btn-sm btn-delete-user" data-user="' + u.usuario + '">🗑️</button>' : 'Admin') + '</td>';
                 tabelaUsuarios.appendChild(tr);
             });
-            tabelaUsuarios.querySelectorAll('.btn-toggle-user').forEach(btn => {
-                btn.addEventListener('click', async function() {
-                    if (confirm('Alterar tipo de "' + this.dataset.user + '"?')) {
-                        await Auth.updateUser(this.dataset.user, { role: this.dataset.role });
-                        Utils.showToast('✅ Atualizado!', 'success');
-                        renderizarUsuarios();
-                    }
-                });
-            });
-            tabelaUsuarios.querySelectorAll('.btn-delete-user').forEach(btn => {
-                btn.addEventListener('click', async function() {
-                    if (confirm('Excluir "' + this.dataset.user + '"?')) {
-                        const r = await Auth.deleteUser(this.dataset.user);
-                        if (r.sucesso) { Utils.showToast('✅ Excluído!', 'success'); renderizarUsuarios(); }
-                        else Utils.showToast('❌ ' + r.mensagem, 'error');
-                    }
-                });
-            });
+            tabelaUsuarios.querySelectorAll('.btn-toggle-user').forEach(b => b.addEventListener('click', async function() { await Auth.updateUser(this.dataset.user, { role: this.dataset.role }); renderizarUsuarios(); }));
+            tabelaUsuarios.querySelectorAll('.btn-delete-user').forEach(b => b.addEventListener('click', async function() { await Auth.deleteUser(this.dataset.user); renderizarUsuarios(); }));
         }
     }
     
@@ -527,98 +526,56 @@ async function salvarContagem(contagem) {
         });
         
         $('#menuSync')?.addEventListener('click', async () => { await syncPendingContagens(); Utils.showToast('✅ Sincronizado!', 'success'); });
-        $('#menuBackup')?.addEventListener('click', () => {
-            if (!state.contagensLocal.length) { Utils.showToast('Nenhum dado', 'error'); return; }
-            const blob = new Blob([JSON.stringify(state.contagensLocal, null, 2)], { type: 'application/json' });
-            Utils.downloadBlob(blob, 'backup_' + new Date().toISOString().slice(0, 10) + '.json');
-            Utils.showToast('Backup OK', 'success');
-        });
+        $('#menuBackup')?.addEventListener('click', () => { if (!state.contagensLocal.length) return; Utils.downloadBlob(new Blob([JSON.stringify(state.contagensLocal)], {type:'application/json'}), 'backup_' + new Date().toISOString().slice(0,10) + '.json'); });
         $('#menuRestore')?.addEventListener('click', () => restoreFileInput?.click());
         if (restoreFileInput) restoreFileInput.addEventListener('change', (e) => {
             if (!e.target.files[0]) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                try {
-                    const dados = JSON.parse(ev.target.result);
-                    if (!Array.isArray(dados)) throw new Error('Inválido');
-                    if (confirm('Restaurar ' + dados.length + ' registros?')) { state.contagensLocal = dados; state.pendingContagens = dados.filter(c => !c.synced); saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas(); Utils.showToast('✅ Restaurado!', 'success'); }
-                } catch (err) { Utils.showToast('Arquivo inválido', 'error'); }
-            };
-            reader.readAsText(e.target.files[0]); e.target.value = '';
+            const r = new FileReader();
+            r.onload = (ev) => { try { const d = JSON.parse(ev.target.result); state.contagensLocal = d; state.pendingContagens = d.filter(c => !c.synced); saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas(); } catch(ex) {} };
+            r.readAsText(e.target.files[0]); e.target.value = '';
         });
         $('#menuLogout')?.addEventListener('click', () => { if (confirm('Sair?')) Auth.logout(); });
         
-        // Adicionar usuário
-        if (btnAddUser) {
-            btnAddUser.addEventListener('click', () => {
-                const nome = novoNome?.value.trim() || '';
-                const usuario = novoUsuario?.value.trim() || '';
-                const senha = novaSenha?.value || '';
-                const role = novoRole?.value || 'user';
-                if (!nome || !usuario || !senha) { Utils.showToast('⚠️ Preencha todos', 'error'); return; }
-                const resultado = Auth.cadastrar(nome, usuario, senha);
-                if (resultado.sucesso) {
-                    if (role === 'master') Auth.updateUser(usuario, { role: 'master' });
-                    Utils.showToast('✅ Usuário criado!', 'success');
-                    if (novoNome) novoNome.value = '';
-                    if (novoUsuario) novoUsuario.value = '';
-                    if (novaSenha) novaSenha.value = '';
-                    renderizarUsuarios();
-                } else Utils.showToast('❌ ' + resultado.mensagem, 'error');
-            });
-        }
+        if (btnAddUser) btnAddUser.addEventListener('click', () => {
+            const n = novoNome?.value.trim(), u = novoUsuario?.value.trim(), s = novaSenha?.value, r = novoRole?.value;
+            if (!n||!u||!s) return;
+            const res = Auth.cadastrar(n, u, s);
+            if (res.sucesso) { if (r === 'master') Auth.updateUser(u, {role:'master'}); if(novoNome)novoNome.value=''; if(novoUsuario)novoUsuario.value=''; if(novaSenha)novaSenha.value=''; renderizarUsuarios(); }
+        });
         
-        // Importação
         if (importZoneMaster && fileInputMaster) {
             importZoneMaster.addEventListener('click', () => fileInputMaster.click());
-            fileInputMaster.addEventListener('change', async (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (ev) => await importarBaseMaster(ev.target.result, file.name); reader.readAsText(file); fileInputMaster.value = ''; });
+            fileInputMaster.addEventListener('change', async (e) => { const f = e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=async(ev)=>await importarBaseMaster(ev.target.result, f.name); r.readAsText(f); fileInputMaster.value=''; });
             importZoneMaster.addEventListener('dragover', (e) => { e.preventDefault(); importZoneMaster.classList.add('drag-over'); });
             importZoneMaster.addEventListener('dragleave', () => importZoneMaster.classList.remove('drag-over'));
-            importZoneMaster.addEventListener('drop', async (e) => { e.preventDefault(); importZoneMaster.classList.remove('drag-over'); const file = e.dataTransfer.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (ev) => await importarBaseMaster(ev.target.result, file.name); reader.readAsText(file); });
+            importZoneMaster.addEventListener('drop', async (e) => { e.preventDefault(); importZoneMaster.classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(!f)return; const r=new FileReader(); r.onload=async(ev)=>await importarBaseMaster(ev.target.result, f.name); r.readAsText(f); });
         }
         btnRecarregarBase?.addEventListener('click', carregarBaseDoSupabase);
         
-        // Pesquisa de código - NÃO salva ao sair do campo
+        // ============ PESQUISA DE CÓDIGO ============
         if (inputCodigo) {
-            inputCodigo.addEventListener('change', () => processarCodigo(inputCodigo.value));
-            inputCodigo.addEventListener('keydown', (e) => {
+            inputCodigo.addEventListener('input', function(e) {
+                // Limpar classes ao digitar
+                this.classList.remove('input-success', 'input-error');
+            });
+            
+            inputCodigo.addEventListener('change', function() {
+                processarCodigo(this.value);
+            });
+            
+            inputCodigo.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    processarCodigo(inputCodigo.value);
-                    // Focar no próximo campo (quantidade) só se encontrou produto
+                    processarCodigo(this.value);
                     if (inputDescricao?.value && inputQuantidade) {
-                        inputQuantidade.focus();
-                        inputQuantidade.select();
+                        setTimeout(() => { inputQuantidade.focus(); inputQuantidade.select(); }, 200);
                     }
                 }
             });
         }
         
-        function processarCodigo(codigoDigitado) {
-            if (!codigoDigitado?.trim()) { if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = ''; return; }
-            if (!state.produtosMapCodAcesso.size) { Utils.showToast('⚠️ Base vazia', 'error'); return; }
-            const produto = pesquisarProduto(codigoDigitado);
-            if (produto) {
-                if (inputDescricao) inputDescricao.value = produto.descCompleta;
-                if (inputEmbalagem) inputEmbalagem.value = produto.embalagemFormatada;
-                if (inputCodigo) {
-                    inputCodigo.value = produto.seqProduto || codigoDigitado;
-                    inputCodigo.classList.add('input-success');
-                    setTimeout(() => inputCodigo?.classList.remove('input-success'), 1500);
-                }
-                Utils.playBeep(); Utils.vibrate(40);
-            } else {
-                if (inputDescricao) inputDescricao.value = '';
-                if (inputEmbalagem) inputEmbalagem.value = '';
-                if (inputCodigo) { inputCodigo.classList.add('input-error'); setTimeout(() => inputCodigo?.classList.remove('input-error'), 1500); }
-                Utils.showToast('❌ Não encontrado', 'error');
-            }
-        }
-        
-        // Salvar - SÓ salva ao clicar no botão ou Ctrl+Enter
-        btnSalvar?.addEventListener('click', executarSalvamento);
-        
-        function executarSalvamento() {
+        // ============ SALVAR ============
+        btnSalvar?.addEventListener('click', () => {
             if (state.salvandoContagem) return;
             
             const rua = inputRua?.value.trim() || '';
@@ -629,7 +586,7 @@ async function salvarContagem(contagem) {
             const qtd = parseInt(inputQuantidade?.value) || 0;
             const obs = inputObservacoes?.value.trim() || '';
             
-            if (!rua || !faixa || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos', 'error'); return; }
+            if (!rua || !faixa || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos os campos', 'error'); return; }
             
             state.salvandoContagem = true;
             
@@ -651,7 +608,7 @@ async function salvarContagem(contagem) {
                 renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
                 state.salvandoContagem = false;
             });
-        }
+        });
         
         btnNovaContagem?.addEventListener('click', () => {
             if (inputRua) inputRua.value = '';
@@ -664,11 +621,26 @@ async function salvarContagem(contagem) {
             if (inputRua) inputRua.focus();
         });
         
-        // Câmera
+        // ============ CÂMERA ============
         btnCamera?.addEventListener('click', () => {
-            if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; }
-            else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigo) => { if (inputCodigo) inputCodigo.value = codigo; processarCodigo(codigo); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); }
+            if (Camera.isOpen) {
+                Camera.close();
+                if (modalCamera) modalCamera.style.display = 'none';
+            } else {
+                if (modalCamera) modalCamera.style.display = 'flex';
+                Camera.open(cameraVideo, (codigoLido) => {
+                    console.log('📷 Código lido:', codigoLido);
+                    if (inputCodigo) {
+                        inputCodigo.value = codigoLido;
+                    }
+                    processarCodigo(codigoLido);
+                    if (!Camera.continuousMode && modalCamera) {
+                        modalCamera.style.display = 'none';
+                    }
+                });
+            }
         });
+        
         btnFecharCamera?.addEventListener('click', () => { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; });
         btnCameraContinuo?.addEventListener('click', () => { const cont = Camera.toggleContinuous(); if (modoCameraLabel) modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO'; });
         
@@ -679,27 +651,26 @@ async function salvarContagem(contagem) {
         
         // Exportação
         btnExportCSV?.addEventListener('click', () => {
-            if (!isMaster) { Utils.showToast('Acesso restrito', 'error'); return; }
-            const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data || '', Hora: c.hora || '', Observações: c.observacoes || '', Usuário: c.usuarioNome || c.usuario || '' }));
-            if (!dados.length) { Utils.showToast('Nenhum dado', 'error'); return; }
+            if (!isMaster) return;
+            const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data||'', Hora: c.hora||'', Observações: c.observacoes||'', Usuário: c.usuarioNome||'' }));
+            if (!dados.length) return;
             const cab = Object.keys(dados[0]).join(';');
-            const csv = '\uFEFF' + [cab, ...dados.map(d => Object.values(d).map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';'))].join('\n');
-            Utils.downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), 'contagem_' + new Date().toISOString().slice(0, 10) + '.csv');
+            Utils.downloadBlob(new Blob(['\uFEFF' + [cab, ...dados.map(d => Object.values(d).map(v => '"' + String(v).replace(/"/g,'""') + '"').join(';'))].join('\n')], {type:'text/csv;charset=utf-8;'}), 'contagem_' + new Date().toISOString().slice(0,10) + '.csv');
         });
+        
         btnExportExcel?.addEventListener('click', () => {
-            if (!isMaster) { Utils.showToast('Acesso restrito', 'error'); return; }
-            const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data || '', Hora: c.hora || '', Observações: c.observacoes || '', Usuário: c.usuarioNome || c.usuario || '' }));
-            if (!dados.length) { Utils.showToast('Nenhum dado', 'error'); return; }
-            const ws = XLSX.utils.json_to_sheet(dados); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Contagens'); XLSX.writeFile(wb, 'contagem_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+            if (!isMaster) return;
+            const dados = getHistoricoFiltrado().map(c => ({ Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao, Embalagem: c.embalagem, Quantidade: c.quantidade, Data: c.data||'', Hora: c.hora||'', Observações: c.observacoes||'', Usuário: c.usuarioNome||'' }));
+            if (!dados.length) return;
+            const ws = XLSX.utils.json_to_sheet(dados); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Contagens'); XLSX.writeFile(wb, 'contagem_' + new Date().toISOString().slice(0,10) + '.xlsx');
         });
         
         [filtroRua, filtroFaixa, filtroCodigo, filtroDescricao].forEach(i => i?.addEventListener('input', renderizarHistorico));
         $$('thead th[data-sort]').forEach(th => th.addEventListener('click', () => { const col = th.dataset.sort; state.sortDirection = state.sortColumn === col ? (state.sortDirection === 'asc' ? 'desc' : 'asc') : 'asc'; state.sortColumn = col; renderizarHistorico(); }));
         
-        // Atalhos - APENAS Ctrl+Enter salva
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; }
-            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); executarSalvamento(); }
+            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); btnSalvar?.click(); }
         });
         
         window.addEventListener('online', async () => { state.dbConnected = true; updateConnectionDot(); if (Database.supabase) { await syncPendingContagens(); if (!state.produtosMapCodAcesso.size) await carregarBaseDoSupabase(); } });
