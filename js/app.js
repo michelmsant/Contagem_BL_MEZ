@@ -154,31 +154,34 @@
     }
     
     function abrirSecao(nome) {
-        ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.classList.remove('active');
-        });
-        
-        const mapa = {
-            contagem: 'secaoContagem', base: 'secaoBase', historico: 'secaoHistorico',
-            dashboard: 'secaoDashboard', usuarios: 'secaoUsuarios'
-        };
-        
-        const secao = document.getElementById(mapa[nome]);
-        if (secao) secao.classList.add('active');
-        
-        $$('.sidebar-item[data-section]').forEach(item => {
-            item.classList.remove('active');
-            if (item.dataset.section === nome) item.classList.add('active');
-        });
-        
+    ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('active');
+    });
+    
+    const mapa = {
+        contagem: 'secaoContagem', base: 'secaoBase', historico: 'secaoHistorico',
+        dashboard: 'secaoDashboard', usuarios: 'secaoUsuarios'
+    };
+    
+    const secao = document.getElementById(mapa[nome]);
+    if (secao) secao.classList.add('active');
+    
+    $$('.sidebar-item[data-section]').forEach(item => {
+        item.classList.remove('active');
+        if (item.dataset.section === nome) item.classList.add('active');
+    });
+    
+    // Forçar renderização ao abrir cada aba
+    setTimeout(() => {
         if (nome === 'historico') renderizarHistorico();
         if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
         if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
         if (nome === 'usuarios') renderizarUsuarios();
-        
-        fecharSidebar();
-    }
+    }, 100);
+    
+    fecharSidebar();
+}
     
     // ============ BASE DE PRODUTOS ============
     async function carregarBaseDoSupabase() {
