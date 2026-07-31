@@ -83,9 +83,7 @@
     async function init() {
         console.log('🚀 Iniciando Contagem BL_MEZ...');
         
-        if (userNameDisplay) {
-            userNameDisplay.textContent = '👤 ' + (currentUser.nome || currentUser.usuario);
-        }
+        if (userNameDisplay) userNameDisplay.textContent = '👤 ' + (currentUser.nome || currentUser.usuario);
         
         if (isMaster) {
             if (masterBadge) masterBadge.style.display = 'inline';
@@ -99,16 +97,8 @@
         const meta = Database.loadBaseMeta();
         if (meta && !state.baseMeta) state.baseMeta = meta;
         
-        // Restaurar última rua selecionada
         const ultimaRua = localStorage.getItem(ULTIMA_RUA_KEY);
-        if (ultimaRua && inputRua) {
-            inputRua.value = ultimaRua;
-        }
-        
-        renderizarHistorico();
-        renderizarDashboard();
-        atualizarEstatisticas();
-        atualizarBaseInfo();
+        if (ultimaRua && inputRua) inputRua.value = ultimaRua;
         
         const dbOk = Database.init();
         state.dbConnected = dbOk;
@@ -120,26 +110,69 @@
             updateConnectionDot();
             if (testOk) {
                 await carregarBaseDoSupabase();
+                // Sincronizar contagens do Supabase ao iniciar
+                await syncFromSupabase();
                 await syncPendingContagens();
             }
         }
         
-        atualizarInfoImportacao();
+        renderizarHistorico();
+        renderizarDashboard();
+        atualizarEstatisticas();
         atualizarBaseInfo();
+        atualizarInfoImportacao();
         
         if (localStorage.getItem('blmez_darkmode') === '1') {
             document.body.classList.add('dark-mode');
             const darkBtn = $('#menuDarkMode');
-            if (darkBtn) darkBtn.textContent = '☀️ Light Mode';
+            if (darkBtn) darkBtn.textContent = '☀️ Modo Claro';
         }
         
         setupEventListeners();
         abrirSecao('contagem');
-        console.log('✅ Pronto! Produtos:', state.produtosMapCodAcesso.size);
+        console.log('✅ Pronto! Contagens:', state.contagensLocal.length);
     }
     
     function updateConnectionDot() {
         if (connectionDot) connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
+    }
+    
+    // ============ SINCRONIZAR DO SUPABASE ============
+    async function syncFromSupabase() {
+        if (!Database.supabase) return;
+        try {
+            console.log('🔄 Buscando contagens do Supabase...');
+            const remotas = await Database.fetchContagens();
+            
+            if (remotas && remotas.length > 0) {
+                const remoteMapped = remotas.map(c => ({
+                    localId: 'remote_' + c.id,
+                    supabase_id: c.id,
+                    rua: c.rua,
+                    codigo: c.codigo,
+                    descricao: c.descricao,
+                    embalagem: c.embalagem,
+                    quantidade: c.quantidade,
+                    observacoes: c.observacoes || '',
+                    data: c.data,
+                    hora: c.hora,
+                    dataISO: c.created_at,
+                    synced: true,
+                    usuario: c.usuario || '',
+                    usuarioNome: c.usuario_nome || ''
+                }));
+                
+                // Manter contagens locais não sincronizadas
+                const localNaoSync = state.contagensLocal.filter(c => !c.synced);
+                state.contagensLocal = [...remoteMapped, ...localNaoSync];
+                saveContagens();
+                console.log('✅ Sincronizado:', remoteMapped.length, 'contagens do Supabase');
+                return true;
+            }
+        } catch (err) {
+            console.warn('⚠️ Erro ao sincronizar:', err.message);
+        }
+        return false;
     }
     
     // ============ SIDEBAR ============
@@ -153,50 +186,37 @@
         if (sidebarOverlay) sidebarOverlay.classList.remove('open');
     }
     
-function abrirSecao(nome) {
-    ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.remove('active');
-    });
-    
-    const mapa = {
-        contagem: 'secaoContagem', base: 'secaoBase', historico: 'secaoHistorico',
-        dashboard: 'secaoDashboard', usuarios: 'secaoUsuarios'
-    };
-    
-    const secao = document.getElementById(mapa[nome]);
-    if (secao) secao.classList.add('active');
-    
-    $$('.sidebar-item[data-section]').forEach(item => {
-        item.classList.remove('active');
-        if (item.dataset.section === nome) item.classList.add('active');
-    });
-    
-    // Ações ao abrir cada aba
-    setTimeout(async () => {
-        if (nome === 'historico') {
-            // Sincronizar com Supabase antes de mostrar
+    async function abrirSecao(nome) {
+        ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('active');
+        });
+        
+        const mapa = { contagem: 'secaoContagem', base: 'secaoBase', historico: 'secaoHistorico', dashboard: 'secaoDashboard', usuarios: 'secaoUsuarios' };
+        const secao = document.getElementById(mapa[nome]);
+        if (secao) secao.classList.add('active');
+        
+        $$('.sidebar-item[data-section]').forEach(item => {
+            item.classList.remove('active');
+            if (item.dataset.section === nome) item.classList.add('active');
+        });
+        
+        // Sincronizar e renderizar
+        if (nome === 'historico' || nome === 'dashboard') {
             if (Database.supabase && navigator.onLine) {
                 await syncFromSupabase();
             }
-            renderizarHistorico();
         }
-        if (nome === 'dashboard') {
-            if (Database.supabase && navigator.onLine) {
-                await syncFromSupabase();
-            }
-            renderizarDashboard();
-            atualizarEstatisticas();
-        }
-        if (nome === 'base') {
-            atualizarInfoImportacao();
-            atualizarBaseInfo();
-        }
-        if (nome === 'usuarios') renderizarUsuarios();
-    }, 200);
-    
-    fecharSidebar();
-}
+        
+        setTimeout(() => {
+            if (nome === 'historico') renderizarHistorico();
+            if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
+            if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
+            if (nome === 'usuarios') renderizarUsuarios();
+        }, 100);
+        
+        fecharSidebar();
+    }
     
     // ============ BASE DE PRODUTOS ============
     async function carregarBaseDoSupabase() {
@@ -207,26 +227,16 @@ function abrirSecao(nome) {
                 construirIndices(produtos);
                 state.baseMeta = { nomeArquivo: 'Supabase', totalRegistros: produtos.length, dataHoraImportacao: new Date().toISOString() };
                 Database.saveBaseMeta(state.baseMeta);
-                atualizarInfoImportacao();
-                atualizarBaseInfo();
-                Utils.showToast('✅ ' + produtos.length.toLocaleString('pt-BR') + ' produtos carregados', 'success');
+                atualizarInfoImportacao(); atualizarBaseInfo();
             }
         } catch (err) {}
     }
     
     function construirIndices(produtos) {
-        state.produtosMapCodAcesso.clear();
-        state.produtosMapSeqProduto.clear();
+        state.produtosMapCodAcesso.clear(); state.produtosMapSeqProduto.clear();
         for (const p of produtos) {
             const emb = p.embalagem && p.qtdembalagem ? p.embalagem + ' x ' + p.qtdembalagem : (p.embalagem || p.qtdembalagem || '');
-            const prod = {
-                seqProduto: p.seqproduto || '',
-                descCompleta: p.desccompleta || '',
-                codAcesso: p.codacesso || '',
-                embalagem: p.embalagem || '',
-                qtdEmbalagem: p.qtdembalagem || '',
-                embalagemFormatada: emb
-            };
+            const prod = { seqProduto: p.seqproduto || '', descCompleta: p.desccompleta || '', codAcesso: p.codacesso || '', embalagem: p.embalagem || '', qtdEmbalagem: p.qtdembalagem || '', embalagemFormatada: emb };
             if (prod.codAcesso) state.produtosMapCodAcesso.set(prod.codAcesso, prod);
             if (prod.seqProduto) state.produtosMapSeqProduto.set(prod.seqProduto, prod);
         }
@@ -256,27 +266,18 @@ function abrirSecao(nome) {
             Database.saveBaseMeta(state.baseMeta);
             atualizarInfoImportacao(); atualizarBaseInfo();
             importStatusMaster.innerHTML = '<span style="color:green">✅ ' + state.produtosMapCodAcesso.size + ' produtos</span>';
-            Utils.showToast('✅ ' + state.produtosMapCodAcesso.size + ' produtos importados!', 'success');
-        } catch (err) {
-            importStatusMaster.innerHTML = '<span style="color:red">❌ ' + Utils.escapeHTML(err.message) + '</span>';
-        } finally {
-            progressBarMaster.classList.remove('active');
-        }
+        } catch (err) { importStatusMaster.innerHTML = '<span style="color:red">❌ ' + Utils.escapeHTML(err.message) + '</span>'; }
+        finally { progressBarMaster.classList.remove('active'); }
     }
     
     function atualizarInfoImportacao() {
         if (!importInfo) return;
-        if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) {
-            importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada.</span>';
-            return;
-        }
+        if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) { importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada.</span>'; return; }
         const dh = Utils.formatDataHora(state.baseMeta.dataHoraImportacao);
         importInfo.innerHTML = '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span> <span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span> <span>📅 ' + dh.data + ' ' + dh.hora + '</span>';
     }
     
-    function atualizarBaseInfo() {
-        if (baseInfo) baseInfo.textContent = state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' produtos na base';
-    }
+    function atualizarBaseInfo() { if (baseInfo) baseInfo.textContent = state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' produtos na base'; }
     
     // ============ PESQUISA ============
     function pesquisarProduto(codigo) {
@@ -290,11 +291,7 @@ function abrirSecao(nome) {
     }
     
     function processarCodigo(codigoDigitado) {
-        if (!codigoDigitado?.trim()) {
-            if (inputDescricao) inputDescricao.value = '';
-            if (inputEmbalagem) inputEmbalagem.value = '';
-            return;
-        }
+        if (!codigoDigitado?.trim()) { if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = ''; return; }
         if (!state.produtosMapCodAcesso.size) { Utils.showToast('⚠️ Base vazia', 'error'); return; }
         const produto = pesquisarProduto(codigoDigitado);
         if (produto) {
@@ -336,14 +333,8 @@ function abrirSecao(nome) {
                         state.contagensLocal[idx].synced = false; state.contagensLocal[idx].usuario = contagem.usuario; state.contagensLocal[idx].usuarioNome = contagem.usuarioNome;
                     }
                     saveContagens();
-                    const atualizado = state.contagensLocal[idx];
-                    if (Database.supabase && navigator.onLine) {
-                        if (atualizado.supabase_id) {
-                            try { await Database.updateContagem(atualizado.supabase_id, { quantidade: atualizado.quantidade, observacoes: atualizado.observacoes||'', data: atualizado.data, hora: atualizado.hora, usuario: atualizado.usuario||'', usuario_nome: atualizado.usuarioNome||'' }); atualizado.synced = true; saveContagens(); } catch (err) {}
-                        } else {
-                            try { const res = await Database.saveContagem({ rua: atualizado.rua, codigo: atualizado.codigo, descricao: atualizado.descricao, embalagem: atualizado.embalagem, quantidade: atualizado.quantidade, observacoes: atualizado.observacoes||'', data: atualizado.data, hora: atualizado.hora, usuario: atualizado.usuario||'', usuario_nome: atualizado.usuarioNome||'' }); atualizado.supabase_id = res.id; atualizado.synced = true; saveContagens(); } catch (err) {}
-                        }
-                    }
+                    // Tentar enviar para o Supabase imediatamente
+                    await enviarParaSupabase(state.contagensLocal[idx]);
                     renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
                     resolve(op);
                 };
@@ -351,17 +342,77 @@ function abrirSecao(nome) {
                 modalDuplicidade.style.display = 'flex';
             });
         }
-        state.contagensLocal.push(contagem); state.pendingContagens.push(contagem); saveContagens();
-        if (Database.supabase && navigator.onLine) await syncPendingContagens();
+        state.contagensLocal.push(contagem);
+        saveContagens();
+        // Enviar nova contagem para o Supabase
+        await enviarParaSupabase(contagem);
         return 'novo';
+    }
+    
+    async function enviarParaSupabase(contagem) {
+        if (!Database.supabase || !navigator.onLine) {
+            // Offline - adicionar na fila de pendentes
+            if (!state.pendingContagens.find(p => p.localId === contagem.localId)) {
+                state.pendingContagens.push(contagem);
+                saveContagens();
+            }
+            return;
+        }
+        
+        try {
+            if (contagem.supabase_id) {
+                // Atualizar existente
+                await Database.updateContagem(contagem.supabase_id, {
+                    quantidade: contagem.quantidade,
+                    observacoes: contagem.observacoes || '',
+                    data: contagem.data,
+                    hora: contagem.hora,
+                    usuario: contagem.usuario || '',
+                    usuario_nome: contagem.usuarioNome || ''
+                });
+                contagem.synced = true;
+                console.log('✅ Contagem atualizada no Supabase');
+            } else {
+                // Criar nova
+                const res = await Database.saveContagem({
+                    rua: contagem.rua,
+                    codigo: contagem.codigo,
+                    descricao: contagem.descricao,
+                    embalagem: contagem.embalagem,
+                    quantidade: contagem.quantidade,
+                    observacoes: contagem.observacoes || '',
+                    data: contagem.data,
+                    hora: contagem.hora,
+                    usuario: contagem.usuario || '',
+                    usuario_nome: contagem.usuarioNome || ''
+                });
+                contagem.supabase_id = res.id;
+                contagem.synced = true;
+                console.log('✅ Contagem salva no Supabase, ID:', res.id);
+            }
+            saveContagens();
+        } catch (err) {
+            console.error('❌ Erro ao enviar para Supabase:', err.message);
+            if (!state.pendingContagens.find(p => p.localId === contagem.localId)) {
+                state.pendingContagens.push(contagem);
+                saveContagens();
+            }
+        }
     }
     
     async function syncPendingContagens() {
         if (!Database.supabase || !state.pendingContagens.length) return;
+        console.log('🔄 Sincronizando', state.pendingContagens.length, 'contagens pendentes...');
         for (const c of [...state.pendingContagens]) {
-            try { const res = await Database.saveContagem({ rua: c.rua, codigo: c.codigo, descricao: c.descricao, embalagem: c.embalagem, quantidade: c.quantidade, observacoes: c.observacoes||'', data: c.data, hora: c.hora, usuario: c.usuario||'', usuario_nome: c.usuarioNome||'' }); c.synced = true; c.supabase_id = res.id; state.pendingContagens = state.pendingContagens.filter(x => x.localId !== c.localId); } catch (e) {}
+            await enviarParaSupabase(c);
+            if (c.synced) {
+                state.pendingContagens = state.pendingContagens.filter(x => x.localId !== c.localId);
+            }
         }
-        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+        saveContagens();
+        renderizarHistorico();
+        renderizarDashboard();
+        atualizarEstatisticas();
     }
     
     // ============ RENDER ============
@@ -395,12 +446,9 @@ function abrirSecao(nome) {
     
     function editarContagem(index) {
         const c = state.contagensLocal[index];
-        if (inputRua) inputRua.value = c.rua;
-        if (inputCodigo) inputCodigo.value = c.codigo;
-        if (inputDescricao) inputDescricao.value = c.descricao;
-        if (inputEmbalagem) inputEmbalagem.value = c.embalagem;
-        if (inputQuantidade) inputQuantidade.value = c.quantidade;
-        if (inputObservacoes) inputObservacoes.value = c.observacoes||'';
+        if (inputRua) inputRua.value = c.rua; if (inputCodigo) inputCodigo.value = c.codigo;
+        if (inputDescricao) inputDescricao.value = c.descricao; if (inputEmbalagem) inputEmbalagem.value = c.embalagem;
+        if (inputQuantidade) inputQuantidade.value = c.quantidade; if (inputObservacoes) inputObservacoes.value = c.observacoes||'';
         state.contagensLocal.splice(index,1); state.pendingContagens = state.pendingContagens.filter(p=>p.localId!==c.localId);
         saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
         abrirSecao('contagem'); Utils.showToast('Editando...','success');
@@ -433,49 +481,6 @@ function abrirSecao(nome) {
         }
     }
     
-    // ============ SINCRONIZAR DO SUPABASE ============
-async function syncFromSupabase() {
-    if (!Database.supabase) return;
-    
-    try {
-        console.log('🔄 Buscando contagens do Supabase...');
-        const remotas = await Database.fetchContagens();
-        
-        if (remotas && remotas.length > 0) {
-            // Converter para o formato local
-            const remoteMapped = remotas.map(c => ({
-                localId: 'remote_' + c.id,
-                supabase_id: c.id,
-                rua: c.rua,
-                codigo: c.codigo,
-                descricao: c.descricao,
-                embalagem: c.embalagem,
-                quantidade: c.quantidade,
-                observacoes: c.observacoes || '',
-                data: c.data,
-                hora: c.hora,
-                dataISO: c.created_at,
-                synced: true,
-                usuario: c.usuario || '',
-                usuarioNome: c.usuario_nome || ''
-            }));
-            
-            // Mesclar com dados locais
-            const merged = [...remoteMapped];
-            for (const local of state.contagensLocal) {
-                if (!local.synced && !merged.find(m => m.localId === local.localId)) {
-                    merged.push(local);
-                }
-            }
-            
-            state.contagensLocal = merged;
-            saveContagens();
-            console.log('✅ Sincronizado do Supabase:', remoteMapped.length, 'contagens');
-        }
-    } catch (err) {
-        console.warn('⚠️ Não foi possível sincronizar:', err.message);
-    }
-}
     // ============ EVENTOS ============
     function setupEventListeners() {
         if (hamburgerBtn) hamburgerBtn.addEventListener('click', abrirSidebar);
@@ -484,9 +489,9 @@ async function syncFromSupabase() {
         $$('.sidebar-item[data-section]').forEach(item => item.addEventListener('click', () => abrirSecao(item.dataset.section)));
         
         const darkBtn = $('#menuDarkMode');
-        if (darkBtn) darkBtn.addEventListener('click', () => { document.body.classList.toggle('dark-mode'); localStorage.setItem('blmez_darkmode', document.body.classList.contains('dark-mode')?'1':'0'); darkBtn.textContent = document.body.classList.contains('dark-mode')?'☀️ Light Mode':'🌓 Dark Mode'; });
+        if (darkBtn) darkBtn.addEventListener('click', () => { document.body.classList.toggle('dark-mode'); localStorage.setItem('blmez_darkmode', document.body.classList.contains('dark-mode')?'1':'0'); darkBtn.textContent = document.body.classList.contains('dark-mode')?'☀️ Modo Claro':'🌓 Modo Escuro'; });
         
-        $('#menuSync')?.addEventListener('click', async () => { await syncPendingContagens(); Utils.showToast('✅ Sincronizado!','success'); });
+        $('#menuSync')?.addEventListener('click', async () => { await syncFromSupabase(); await syncPendingContagens(); Utils.showToast('✅ Sincronizado!','success'); });
         $('#menuBackup')?.addEventListener('click', () => { if (!state.contagensLocal.length) return; Utils.downloadBlob(new Blob([JSON.stringify(state.contagensLocal)],{type:'application/json'}),'backup_'+new Date().toISOString().slice(0,10)+'.json'); });
         $('#menuRestore')?.addEventListener('click', () => restoreFileInput?.click());
         if (restoreFileInput) restoreFileInput.addEventListener('change', (e) => { if(!e.target.files[0])return; const r=new FileReader(); r.onload=(ev)=>{try{const d=JSON.parse(ev.target.result);state.contagensLocal=d;state.pendingContagens=d.filter(c=>!c.synced);saveContagens();renderizarHistorico();renderizarDashboard();atualizarEstatisticas();}catch(ex){}}; r.readAsText(e.target.files[0]); e.target.value=''; });
@@ -503,37 +508,28 @@ async function syncFromSupabase() {
         }
         btnRecarregarBase?.addEventListener('click', carregarBaseDoSupabase);
         
-        // Pesquisa de código
         if (inputCodigo) {
             inputCodigo.addEventListener('input', function() { this.classList.remove('input-success','input-error'); });
             inputCodigo.addEventListener('change', function() { processarCodigo(this.value); });
             inputCodigo.addEventListener('keydown', function(e) { if(e.key==='Enter'){e.preventDefault();processarCodigo(this.value);if(inputDescricao?.value&&inputQuantidade){setTimeout(()=>{inputQuantidade.focus();inputQuantidade.select();},200);}} });
         }
         
-        // Salvar
         btnSalvar?.addEventListener('click', () => {
             if (state.salvandoContagem) return;
-            
             const rua = inputRua?.value || '';
             const codigo = inputCodigo?.value.trim() || '';
             const desc = inputDescricao?.value.trim() || '';
             const emb = inputEmbalagem?.value.trim() || '';
             const qtd = parseInt(inputQuantidade?.value) || 0;
             const obs = inputObservacoes?.value.trim() || '';
-            
-            if (!rua || !codigo || !desc || qtd <= 0) {
-                Utils.showToast('⚠️ Preencha todos os campos', 'error');
-                return;
-            }
-            
+            if (!rua || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos','error'); return; }
             state.salvandoContagem = true;
             const dh = Utils.formatDataHora(new Date());
             const contagem = { localId: Utils.generateId(), rua, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome };
-            
             salvarContagem(contagem).then(res => {
                 if (res !== 'cancelar') {
                     Utils.showToast('✅ Salvo!','success');
-                    if (inputRua && inputRua.value) localStorage.setItem(ULTIMA_RUA_KEY, inputRua.value);
+                    if (inputRua?.value) localStorage.setItem(ULTIMA_RUA_KEY, inputRua.value);
                     const ruaSalva = inputRua?.value || '';
                     if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
                     if (inputDescricao) inputDescricao.value = '';
@@ -551,19 +547,12 @@ async function syncFromSupabase() {
         btnNovaContagem?.addEventListener('click', () => {
             const ruaAtual = inputRua?.value || '';
             if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
-            if (inputDescricao) inputDescricao.value = '';
-            if (inputEmbalagem) inputEmbalagem.value = '';
-            if (inputQuantidade) inputQuantidade.value = '1';
-            if (inputObservacoes) inputObservacoes.value = '';
-            if (inputRua) inputRua.value = ruaAtual;
-            if (inputCodigo) inputCodigo.focus();
+            if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
+            if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
+            if (inputRua) inputRua.value = ruaAtual; if (inputCodigo) inputCodigo.focus();
         });
         
-        // Câmera
-        btnCamera?.addEventListener('click', () => {
-            if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; }
-            else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigoLido) => { if (inputCodigo) inputCodigo.value = codigoLido; processarCodigo(codigoLido); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); }
-        });
+        btnCamera?.addEventListener('click', () => { if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; } else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigoLido) => { if (inputCodigo) inputCodigo.value = codigoLido; processarCodigo(codigoLido); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); } });
         btnFecharCamera?.addEventListener('click', () => { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; });
         btnCameraContinuo?.addEventListener('click', () => { const cont = Camera.toggleContinuous(); if (modoCameraLabel) modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO'; });
         
@@ -578,7 +567,7 @@ async function syncFromSupabase() {
         $$('thead th[data-sort]').forEach(th=>th.addEventListener('click',()=>{const col=th.dataset.sort;state.sortDirection=state.sortColumn===col?(state.sortDirection==='asc'?'desc':'asc'):'asc';state.sortColumn=col;renderizarHistorico();}));
         
         document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&Camera.isOpen){Camera.close();if(modalCamera)modalCamera.style.display='none';}if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();btnSalvar?.click();}});
-        window.addEventListener('online',async()=>{state.dbConnected=true;updateConnectionDot();if(Database.supabase){await syncPendingContagens();if(!state.produtosMapCodAcesso.size)await carregarBaseDoSupabase();}});
+        window.addEventListener('online',async()=>{state.dbConnected=true;updateConnectionDot();if(Database.supabase){await syncPendingContagens();}});
         window.addEventListener('offline',()=>{state.dbConnected=false;updateConnectionDot();});
     }
     
