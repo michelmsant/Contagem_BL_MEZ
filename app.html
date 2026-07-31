@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#0D47A1">
+    <meta name="theme-color" content="#1a2a4a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Contagem BL_MEZ</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=2.0">
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
@@ -42,6 +42,7 @@
             <button class="sidebar-item" data-section="base" id="menuBase" style="display:none;">📂 Gerenciar Base</button>
             <button class="sidebar-item" data-section="historico" id="menuHistorico" style="display:none;">📋 Histórico</button>
             <button class="sidebar-item" data-section="dashboard">📈 Dashboard por Rua</button>
+            <button class="sidebar-item" data-section="usuarios" id="menuUsuarios" style="display:none;">👥 Usuários</button>
             <div class="sidebar-divider"></div>
             <button class="sidebar-item" id="menuDarkMode">🌓 Modo Escuro</button>
             <button class="sidebar-item" id="menuSync">🔄 Sincronizar</button>
@@ -54,10 +55,9 @@
 
         <!-- MAIN CONTENT -->
         <main class="main-content">
-            <!-- SEÇÃO: CONTAGEM -->
+            <!-- CONTAGEM -->
             <section class="section-content active" id="secaoContagem">
                 <div class="container">
-                    <!-- Formulário de Contagem -->
                     <div class="card">
                         <div class="card-header"><span class="icon">🔢</span> Contagem de Estoque</div>
                         <div class="form-grid">
@@ -83,16 +83,13 @@
                 </div>
             </section>
 
-            <!-- SEÇÃO: BASE (APENAS MASTER) -->
+            <!-- BASE (MASTER) -->
             <section class="section-content" id="secaoBase">
                 <div class="container">
-                    <!-- Status da Base -->
                     <div class="card">
                         <div class="card-header"><span class="icon">📦</span> Status da Base</div>
                         <div class="import-info" id="importInfo">Carregando...</div>
                     </div>
-
-                    <!-- Importação -->
                     <div class="card">
                         <div class="card-header"><span class="icon">📂</span> Importar Nova Base</div>
                         <p style="margin-bottom:12px;color:var(--text-secondary);">
@@ -115,7 +112,7 @@
                 </div>
             </section>
 
-            <!-- SEÇÃO: HISTÓRICO (APENAS MASTER) -->
+            <!-- HISTÓRICO (MASTER) -->
             <section class="section-content" id="secaoHistorico">
                 <div class="container">
                     <div class="card">
@@ -133,19 +130,19 @@
                         <div class="table-wrapper">
                             <table>
                                 <thead>
-    <tr>
-        <th data-sort="rua">Rua</th>
-        <th data-sort="faixa">Faixa</th>
-        <th data-sort="codigo">Código</th>
-        <th data-sort="descricao">Descrição</th>
-        <th data-sort="embalagem">Embalagem</th>
-        <th data-sort="quantidade">Qtd</th>
-        <th data-sort="data">Data</th>
-        <th data-sort="hora">Hora</th>
-        <th>Usuário</th>
-        <th>Ações</th>
-    </tr>
-</thead>
+                                    <tr>
+                                        <th data-sort="rua">Rua</th>
+                                        <th data-sort="faixa">Faixa</th>
+                                        <th data-sort="codigo">Código</th>
+                                        <th data-sort="descricao">Descrição</th>
+                                        <th data-sort="embalagem">Embalagem</th>
+                                        <th data-sort="quantidade">Qtd</th>
+                                        <th data-sort="data">Data</th>
+                                        <th data-sort="hora">Hora</th>
+                                        <th>Usuário</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
                                 <tbody id="tabelaHistorico"></tbody>
                             </table>
                         </div>
@@ -154,7 +151,7 @@
                 </div>
             </section>
 
-            <!-- SEÇÃO: DASHBOARD -->
+            <!-- DASHBOARD -->
             <section class="section-content" id="secaoDashboard">
                 <div class="container">
                     <div class="stats-grid" id="dashboardStats">
@@ -180,6 +177,45 @@
                             </table>
                         </div>
                         <p id="nenhumDashboard" style="text-align:center;padding:20px;">Nenhuma contagem registrada.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- USUÁRIOS (MASTER) -->
+            <section class="section-content" id="secaoUsuarios">
+                <div class="container">
+                    <div class="card">
+                        <div class="card-header"><span class="icon">👥</span> Gerenciar Usuários</div>
+                        
+                        <div class="form-grid" style="margin-bottom:20px;">
+                            <div class="form-group"><label>Nome</label><input type="text" id="novoNome" placeholder="Nome completo"></div>
+                            <div class="form-group"><label>Usuário</label><input type="text" id="novoUsuario" placeholder="Nome de usuário"></div>
+                            <div class="form-group"><label>Senha</label><input type="password" id="novaSenha" placeholder="Senha"></div>
+                            <div class="form-group"><label>Tipo</label>
+                                <select id="novoRole" style="padding:10px;border:2px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);background:var(--surface);color:var(--text);width:100%;">
+                                    <option value="user">Usuário Comum</option>
+                                    <option value="master">Master (Admin)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-success btn-sm" id="btnAddUser" style="width:auto;">➕ Adicionar Usuário</button>
+                        
+                        <div class="table-wrapper" style="margin-top:20px;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Usuário</th>
+                                        <th>Tipo</th>
+                                        <th>Status</th>
+                                        <th>Data Criação</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaUsuarios"></tbody>
+                            </table>
+                        </div>
+                        <p id="nenhumUsuario" style="text-align:center;padding:20px;">Nenhum usuário encontrado.</p>
                     </div>
                 </div>
             </section>
