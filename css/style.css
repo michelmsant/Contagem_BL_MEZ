@@ -426,6 +426,42 @@ body.dark-mode .app-header {
 /* ========== FORM ========== */
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
 
+/* ========== AJUSTE FORMULÁRIO CONTAGEM ========== */
+#secaoContagem .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+#secaoContagem .form-group:has(#descricao),
+#secaoContagem .form-group:has(#observacoes) {
+    grid-column: 1 / -1;
+}
+
+#secaoContagem .form-group:has(#embalagem) {
+    grid-column: 1 / 2;
+}
+
+#secaoContagem .form-group:has(#quantidade) {
+    grid-column: 2 / 3;
+}
+
+#secaoContagem .form-group input,
+#secaoContagem .form-group select {
+    width: 100%;
+}
+
+#secaoContagem #descricao {
+    height: 44px;
+    font-size: 1rem;
+}
+
+#secaoContagem #quantidade {
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
 /* ========== ESTATÍSTICAS ========== */
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
 
@@ -734,6 +770,30 @@ tbody tr:hover { background: var(--bg-secondary); }
         font-size: 0.85rem;
         padding: 8px 10px;
     }
+
+    /* ===== AJUSTE FORMULÁRIO CONTAGEM EM TELAS PEQUENAS ===== */
+    #secaoContagem .form-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    
+    #secaoContagem .form-group:has(#descricao),
+    #secaoContagem .form-group:has(#observacoes) {
+        grid-column: 1 / -1;
+    }
+    
+    #secaoContagem .form-group:has(#embalagem) {
+        grid-column: 1 / 2;
+    }
+    
+    #secaoContagem .form-group:has(#quantidade) {
+        grid-column: 2 / 3;
+    }
+    
+    #secaoContagem #descricao {
+        height: 40px;
+        font-size: 0.95rem;
+    }
 }
 
 /* ===== EXTRA - Ajustes para telas muito estreitas (até 360px) ===== */
@@ -770,4 +830,38 @@ tbody tr:hover { background: var(--bg-secondary); }
     table { min-width: 400px; font-size: 0.65rem; }
     thead th { padding: 4px 3px; font-size: 0.6rem; }
     tbody td { padding: 4px 3px; font-size: 0.62rem; }
+
+    /* Formulário contagem em telas muito pequenas */
+    #secaoContagem .form-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+    }
+    
+    #secaoContagem .form-group:has(#descricao),
+    #secaoContagem .form-group:has(#observacoes) {
+        grid-column: 1 / -1;
+    }
+    
+    #secaoContagem .form-group:has(#embalagem) {
+        grid-column: 1 / 2;
+    }
+    
+    #secaoContagem .form-group:has(#quantidade) {
+        grid-column: 2 / 3;
+    }
+    
+    #secaoContagem #descricao {
+        height: 36px;
+        font-size: 0.85rem;
+    }
+    
+    #secaoContagem .form-group label {
+        font-size: 0.65rem;
+    }
+    
+    #secaoContagem .form-group input,
+    #secaoContagem .form-group select {
+        font-size: 0.8rem;
+        padding: 6px 8px;
+    }
 }
