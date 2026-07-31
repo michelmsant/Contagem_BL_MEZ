@@ -55,47 +55,66 @@
 
         <!-- MAIN CONTENT -->
         <main class="main-content">
-            <!-- CONTAGEM -->
-            <section class="section-content active" id="secaoContagem">
-                <div class="container">
-                    <div class="card">
-                        <div class="card-header"><span class="icon">🔢</span> Contagem de Estoque</div>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label>Rua</label>
-                                <select id="rua" style="padding:10px 12px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.95rem;font-family:var(--font);background:var(--surface);color:var(--text);width:100%;cursor:pointer;">
-                                    <option value="">Selecione a rua...</option>
-                                    <option value="BL1">BL1</option>
-                                    <option value="BL2">BL2</option>
-                                    <option value="BL3">BL3</option>
-                                    <option value="BL4">BL4</option>
-                                    <option value="BL5">BL5</option>
-                                    <option value="BL6">BL6</option>
-                                    <option value="BL7">BL7</option>
-                                    <option value="BL8">BL8</option>
-                                    <option value="MEZ">MEZ</option>
-                                    <option value="DOC">DOC</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Código</label>
-                                <div class="input-with-btn">
-                                    <input type="text" id="codigo" placeholder="Digite ou escaneie..." autocomplete="off">
-                                    <button class="btn-camera" id="btnCamera">📷</button>
-                                </div>
-                            </div>
-                            <div class="form-group"><label>Descrição</label><input type="text" id="descricao" readonly></div>
-                            <div class="form-group"><label>Embalagem</label><input type="text" id="embalagem" readonly></div>
-                            <div class="form-group"><label>Qtd. Paletes</label><input type="number" id="quantidade" value="1" min="1"></div>
-                            <div class="form-group" style="grid-column:span 2;"><label>Observações</label><input type="text" id="observacoes"></div>
-                        </div>
-                        <div class="btn-row">
-                            <button class="btn btn-success" id="btnSalvar" style="width:auto;">✅ Salvar</button>
-                            <button class="btn btn-outline" id="btnNovaContagem" style="width:auto;margin-top:0;">🔄 Limpar</button>
-                        </div>
+<!-- CONTAGEM -->
+<section class="section-content active" id="secaoContagem">
+    <div class="container">
+        <div class="card">
+            <div class="card-header"><span class="icon">🔢</span> Contagem de Estoque</div>
+            <div class="form-grid">
+                <!-- Primeira linha: Rua e Código -->
+                <div class="form-group">
+                    <label>Rua</label>
+                    <select id="rua" style="padding:10px 12px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.95rem;font-family:var(--font);background:var(--surface);color:var(--text);width:100%;cursor:pointer;">
+                        <option value="">Selecione a rua...</option>
+                        <option value="BL1">BL1</option>
+                        <option value="BL2">BL2</option>
+                        <option value="BL3">BL3</option>
+                        <option value="BL4">BL4</option>
+                        <option value="BL5">BL5</option>
+                        <option value="BL6">BL6</option>
+                        <option value="BL7">BL7</option>
+                        <option value="BL8">BL8</option>
+                        <option value="MEZ">MEZ</option>
+                        <option value="DOC">DOC</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Código</label>
+                    <div class="input-with-btn">
+                        <input type="text" id="codigo" placeholder="Digite ou escaneie..." autocomplete="off">
+                        <button class="btn-camera" id="btnCamera">📷</button>
                     </div>
                 </div>
-            </section>
+                
+                <!-- Segunda linha: Descrição (ocupa 100%) -->
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label>Descrição</label>
+                    <input type="text" id="descricao" readonly style="height: 44px; font-size: 1rem;">
+                </div>
+                
+                <!-- Terceira linha: Embalagem (esquerda) e Qtd. Paletes (direita) -->
+                <div class="form-group" style="grid-column: 1 / 2;">
+                    <label>Embalagem</label>
+                    <input type="text" id="embalagem" readonly>
+                </div>
+                <div class="form-group" style="grid-column: 2 / 3;">
+                    <label>Qtd. Paletes</label>
+                    <input type="number" id="quantidade" value="1" min="1" style="text-align: center; font-size: 1rem; font-weight: 600;">
+                </div>
+                
+                <!-- Quarta linha: Observações (ocupa 100%) -->
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label>Observações</label>
+                    <input type="text" id="observacoes">
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-success" id="btnSalvar" style="width:auto;">✅ Salvar</button>
+                <button class="btn btn-outline" id="btnNovaContagem" style="width:auto;margin-top:0;">🔄 Limpar</button>
+            </div>
+        </div>
+    </div>
+</section>
 
             <!-- BASE (MASTER) -->
             <section class="section-content" id="secaoBase">
