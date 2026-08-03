@@ -81,7 +81,7 @@
                             <div class="form-group">
                                 <label>Código</label>
                                 <div class="input-with-btn">
-                                    <input type="text" id="codigo" placeholder="Digite ou escaneie..." autocomplete="off">
+                                    <input type="text" id="codigo" placeholder="Digite ou escaneie..." autocomplete="off" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                                     <button class="btn-camera" id="btnCamera">📷</button>
                                 </div>
                             </div>

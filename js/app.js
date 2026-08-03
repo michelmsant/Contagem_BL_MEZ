@@ -526,9 +526,17 @@
         }
         
         btnSalvar?.addEventListener('click', () => {
-            if (state.salvandoContagem) return;
-            const rua = inputRua?.value || '';
-            const codigo = inputCodigo?.value.trim() || '';
+    if (state.salvandoContagem) return;
+    
+    const rua = inputRua?.value || '';
+    const codigo = inputCodigo?.value.trim() || '';
+    
+    // Validar se código contém apenas números
+    if (!/^\d+$/.test(codigo)) {
+        Utils.showToast('⚠️ Código deve conter apenas números', 'error');
+        if (inputCodigo) inputCodigo.focus();
+        return;
+    }
             const desc = inputDescricao?.value.trim() || '';
             const emb = inputEmbalagem?.value.trim() || '';
             const qtd = parseInt(inputQuantidade?.value) || 0;
