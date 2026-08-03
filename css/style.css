@@ -919,7 +919,7 @@ tbody tr:hover { background: var(--bg-secondary); }
     }
     
     #secaoContagem .form-group:has(#quantidade) {
-        grid-column: 2;
+        grid-column: 1;
     }
     
     /* Observações - linha cheia */
