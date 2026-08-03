@@ -107,12 +107,12 @@ const Auth = {
     
     cadastrar(nome, usuario, senha) {
         if (!nome || nome.trim().length < 3) return { sucesso: false, mensagem: 'Nome deve ter pelo menos 3 caracteres.' };
-        if (!usuario || usuario.trim().length < 4) return { sucesso: false, mensagem: 'Usuário deve ter pelo menos 4 caracteres.' };
+        if (!usuario || usuario.trim().length < 6) return { sucesso: false, mensagem: 'Matrícula deve ter pelo menos 6 caracteres.' };
         if (!senha || senha.trim().length < 4) return { sucesso: false, mensagem: 'Senha deve ter pelo menos 4 caracteres.' };
         
         const users = this._getLocalUsers();
         if (users.find(u => u.usuario === usuario.trim())) {
-            return { sucesso: false, mensagem: 'Este nome de usuário já está em uso.' };
+            return { sucesso: false, mensagem: 'Esta matrícula já está em uso.' };
         }
         
         const newUser = {
@@ -172,11 +172,11 @@ const Auth = {
         const user = users.find(lu => lu.usuario === u && lu.senha === s);
         
         if (!user) {
-            return { sucesso: false, mensagem: 'Usuário ou senha incorretos.' };
+            return { sucesso: false, mensagem: 'Matrícula ou senha incorretos.' };
         }
         
         if (user.ativo === false) {
-            return { sucesso: false, mensagem: 'Usuário desativado.' };
+            return { sucesso: false, mensagem: 'Matrícula desativada.' };
         }
         
         return this._createSession(user);
