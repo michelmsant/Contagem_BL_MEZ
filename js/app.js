@@ -494,7 +494,21 @@
         if (restoreFileInput) restoreFileInput.addEventListener('change', (e) => { if(!e.target.files[0])return; const r=new FileReader(); r.onload=(ev)=>{try{const d=JSON.parse(ev.target.result);state.contagensLocal=d;state.pendingContagens=d.filter(c=>!c.synced);saveContagens();renderizarHistorico();renderizarDashboard();atualizarEstatisticas();}catch(ex){}}; r.readAsText(e.target.files[0]); e.target.value=''; });
         $('#menuLogout')?.addEventListener('click', () => { if (confirm('Sair?')) Auth.logout(); });
         
-        if (btnAddUser) btnAddUser.addEventListener('click', () => { const n=novoNome?.value.trim(),u=novoUsuario?.value.trim(),s=novaSenha?.value,r=novoRole?.value; if(!n||!u||!s)return; const res=Auth.cadastrar(n,u,s); if(res.sucesso){if(r==='master')Auth.updateUser(u,{role:'master'});if(novoNome)novoNome.value='';if(novoUsuario)novoUsuario.value='';if(novaSenha)novaSenha.value='';renderizarUsuarios();} });
+        if (btnAddUser) btnAddUser.addEventListener('click', () => { 
+    const n = novoNome?.value.trim(), u = novoUsuario?.value.trim(), s = novaSenha?.value, r = novoRole?.value; 
+    if (!n || !u || !s) return;
+    if (!/^\d+$/.test(u)) { Utils.showToast('⚠️ Matrícula deve conter apenas números', 'error'); return; }
+    const res = Auth.cadastrar(n, u, s); 
+    if (res.sucesso) {
+        if (r === 'master') Auth.updateUser(u, { role: 'master' });
+        if (novoNome) novoNome.value = ''; 
+        if (novoUsuario) novoUsuario.value = ''; 
+        if (novaSenha) novaSenha.value = ''; 
+        renderizarUsuarios(); 
+    } else {
+        Utils.showToast('❌ ' + res.mensagem, 'error');
+    }
+});
         
         if (importZoneMaster && fileInputMaster) {
             importZoneMaster.addEventListener('click', () => fileInputMaster.click());

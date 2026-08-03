@@ -108,6 +108,7 @@ const Auth = {
     cadastrar(nome, usuario, senha) {
         if (!nome || nome.trim().length < 3) return { sucesso: false, mensagem: 'Nome deve ter pelo menos 3 caracteres.' };
         if (!usuario || usuario.trim().length < 6) return { sucesso: false, mensagem: 'Matrícula deve ter pelo menos 6 caracteres.' };
+        if (!/^\d+$/.test(usuario.trim())) return { sucesso: false, mensagem: 'Matrícula deve conter apenas números.' };
         if (!senha || senha.trim().length < 4) return { sucesso: false, mensagem: 'Senha deve ter pelo menos 4 caracteres.' };
         
         const users = this._getLocalUsers();
@@ -136,6 +137,7 @@ const Auth = {
     async login(usuario, senha) {
         if (!usuario || !senha) {
             return { sucesso: false, mensagem: 'Preencha todos os campos.' };
+            if (!/^\d+$/.test(usuario.trim())) return { sucesso: false, mensagem: 'Matrícula deve conter apenas números.' };
         }
         
         const u = usuario.trim();

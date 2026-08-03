@@ -44,7 +44,7 @@
                 
                 <div class="form-group">
                     <label>Matrícula</label>
-                    <input type="text" id="loginUsuario" placeholder="Digite sua matrícula" autocomplete="username" inputmode="text">
+                    <input type="text" id="loginUsuario" placeholder="Digite sua matrícula" autocomplete="username" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                 </div>
                 
                 <div class="form-group">
@@ -73,7 +73,7 @@
                 <div class="success-message" id="cadastroSuccess" style="display:none; background: var(--green-light); color: var(--green-dark); padding: 12px 16px; border-radius: var(--radius-sm); font-size: 0.85rem; margin-bottom: 16px; border: 1px solid rgba(16,185,129,0.2);"></div>
                 
                 <div class="form-group"><label>Nome Completo</label><input type="text" id="cadastroNome" placeholder="Digite seu nome completo"></div>
-                <div class="form-group"><label>Matrícula</label><input type="text" id="cadastroUsuario" placeholder="Digite sua matrícula"></div>
+                <div class="form-group"><label>Matrícula</label><input type="text" id="cadastroUsuario" placeholder="Digite sua matrícula" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')"></div>
                 <div class="form-group"><label>Senha</label><input type="password" id="cadastroSenha" placeholder="Crie uma senha"></div>
                 <div class="form-group"><label>Confirmar Senha</label><input type="password" id="cadastroConfirmarSenha" placeholder="Confirme sua senha"></div>
                 
