@@ -324,25 +324,17 @@
     delete contagem.faixa;
     
     // Verificar se a rua já foi finalizada (primeira contagem concluída)
-    const ruaJaFinalizada = state.contagensLocal.find(c => c.rua === contagem.rua && c.finalizada === true);
+    const ruaJaFinalizada = state.contagensLocal.find(c => c.rua === contagem.rua && c.contagem === 1 && c.finalizada === true);
     
-    // Se a rua já foi finalizada, esta é a SEGUNDA contagem (contagem independente)
-    if (ruaJaFinalizada) {
-        contagem.contagem = 2;
-        contagem.finalizada = false;
-        state.contagensLocal.push(contagem);
-        saveContagens();
-        await enviarParaSupabase(contagem);
-        atualizarHistoricoRua();
-        return 'novo';
-    }
+    // Determinar o número da contagem atual
+    const numeroContagemAtual = ruaJaFinalizada ? 2 : 1;
+    contagem.contagem = numeroContagemAtual;
     
-    // Primeira contagem (rua ainda não finalizada)
-    // Verificar duplicidade apenas na PRIMEIRA contagem
+    // Verificar duplicidade: MESMA rua + MESMO código + MESMA contagem (1ª ou 2ª)
     const idx = state.contagensLocal.findIndex(c => 
         c.rua === contagem.rua && 
         c.codigo === contagem.codigo && 
-        c.contagem === 1 && 
+        c.contagem === numeroContagemAtual &&
         c.finalizada === false
     );
     
@@ -352,7 +344,14 @@
                 state.resolvendoDuplicidade = null;
                 const c = state.contagensLocal[idx];
                 if (op === 'editar') {
-                    state.contagensLocal[idx] = { ...contagem, synced: false, localId: c.localId, supabase_id: c.supabase_id || null, contagem: 1, finalizada: false };
+                    state.contagensLocal[idx] = { 
+                        ...contagem, 
+                        synced: false, 
+                        localId: c.localId, 
+                        supabase_id: c.supabase_id || null,
+                        contagem: numeroContagemAtual,
+                        finalizada: false
+                    };
                 } else if (op === 'somar') {
                     state.contagensLocal[idx].quantidade += contagem.quantidade;
                     state.contagensLocal[idx].observacoes = contagem.observacoes || c.observacoes || '';
@@ -371,13 +370,13 @@
                 atualizarEstatisticas();
                 resolve(op);
             };
-            msgDuplicidade.innerHTML = '<strong>' + Utils.escapeHTML(state.contagensLocal[idx].rua) + '</strong><br>Código: ' + Utils.escapeHTML(state.contagensLocal[idx].codigo) + '<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
+            msgDuplicidade.innerHTML = '<strong>' + Utils.escapeHTML(state.contagensLocal[idx].rua) + '</strong><br>Código: ' + Utils.escapeHTML(state.contagensLocal[idx].codigo) + '<br>Contagem: ' + numeroContagemAtual + 'ª<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
             modalDuplicidade.style.display = 'flex';
         });
     }
     
-    // Nova contagem (primeira)
-    contagem.contagem = 1;
+    // Nova contagem
+    contagem.contagem = numeroContagemAtual;
     contagem.finalizada = false;
     state.contagensLocal.push(contagem);
     saveContagens();
