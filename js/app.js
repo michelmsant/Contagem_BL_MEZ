@@ -321,36 +321,70 @@
     }
     
     async function salvarContagem(contagem) {
-        delete contagem.faixa;
-        const idx = state.contagensLocal.findIndex(c => c.rua === contagem.rua && c.codigo === contagem.codigo);
-        if (idx >= 0) {
-            return new Promise(resolve => {
-                state.resolvendoDuplicidade = async (op) => {
-                    state.resolvendoDuplicidade = null;
-                    const c = state.contagensLocal[idx];
-                    if (op === 'editar') state.contagensLocal[idx] = { ...contagem, synced: false, localId: c.localId, supabase_id: c.supabase_id || null };
-                    else if (op === 'somar') {
-                        state.contagensLocal[idx].quantidade += contagem.quantidade;
-                        state.contagensLocal[idx].observacoes = contagem.observacoes || c.observacoes || '';
-                        state.contagensLocal[idx].data = contagem.data; state.contagensLocal[idx].hora = contagem.hora; state.contagensLocal[idx].dataISO = contagem.dataISO;
-                        state.contagensLocal[idx].synced = false; state.contagensLocal[idx].usuario = contagem.usuario; state.contagensLocal[idx].usuarioNome = contagem.usuarioNome;
-                    }
-                    saveContagens();
-                    await enviarParaSupabase(state.contagensLocal[idx]);
-                    atualizarHistoricoRua();
-                    renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
-                    resolve(op);
-                };
-                msgDuplicidade.innerHTML = '<strong>' + Utils.escapeHTML(state.contagensLocal[idx].rua) + '</strong><br>Código: ' + Utils.escapeHTML(state.contagensLocal[idx].codigo) + '<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
-                modalDuplicidade.style.display = 'flex';
-            });
-        }
+    delete contagem.faixa;
+    
+    // Verificar se a rua já foi finalizada (primeira contagem concluída)
+    const ruaJaFinalizada = state.contagensLocal.find(c => c.rua === contagem.rua && c.finalizada === true);
+    
+    // Se a rua já foi finalizada, esta é a SEGUNDA contagem (contagem independente)
+    if (ruaJaFinalizada) {
+        contagem.contagem = 2;
+        contagem.finalizada = false;
         state.contagensLocal.push(contagem);
         saveContagens();
         await enviarParaSupabase(contagem);
         atualizarHistoricoRua();
         return 'novo';
     }
+    
+    // Primeira contagem (rua ainda não finalizada)
+    // Verificar duplicidade apenas na PRIMEIRA contagem
+    const idx = state.contagensLocal.findIndex(c => 
+        c.rua === contagem.rua && 
+        c.codigo === contagem.codigo && 
+        c.contagem === 1 && 
+        c.finalizada === false
+    );
+    
+    if (idx >= 0) {
+        return new Promise(resolve => {
+            state.resolvendoDuplicidade = async (op) => {
+                state.resolvendoDuplicidade = null;
+                const c = state.contagensLocal[idx];
+                if (op === 'editar') {
+                    state.contagensLocal[idx] = { ...contagem, synced: false, localId: c.localId, supabase_id: c.supabase_id || null, contagem: 1, finalizada: false };
+                } else if (op === 'somar') {
+                    state.contagensLocal[idx].quantidade += contagem.quantidade;
+                    state.contagensLocal[idx].observacoes = contagem.observacoes || c.observacoes || '';
+                    state.contagensLocal[idx].data = contagem.data;
+                    state.contagensLocal[idx].hora = contagem.hora;
+                    state.contagensLocal[idx].dataISO = contagem.dataISO;
+                    state.contagensLocal[idx].synced = false;
+                    state.contagensLocal[idx].usuario = contagem.usuario;
+                    state.contagensLocal[idx].usuarioNome = contagem.usuarioNome;
+                }
+                saveContagens();
+                await enviarParaSupabase(state.contagensLocal[idx]);
+                atualizarHistoricoRua();
+                renderizarHistorico();
+                renderizarDashboard();
+                atualizarEstatisticas();
+                resolve(op);
+            };
+            msgDuplicidade.innerHTML = '<strong>' + Utils.escapeHTML(state.contagensLocal[idx].rua) + '</strong><br>Código: ' + Utils.escapeHTML(state.contagensLocal[idx].codigo) + '<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Nova: ' + contagem.quantidade;
+            modalDuplicidade.style.display = 'flex';
+        });
+    }
+    
+    // Nova contagem (primeira)
+    contagem.contagem = 1;
+    contagem.finalizada = false;
+    state.contagensLocal.push(contagem);
+    saveContagens();
+    await enviarParaSupabase(contagem);
+    atualizarHistoricoRua();
+    return 'novo';
+}
     
     async function enviarParaSupabase(contagem) {
         if (!Database.supabase || !navigator.onLine) {
@@ -415,104 +449,129 @@
     
     // ============ HISTÓRICO DA RUA ============
     function atualizarHistoricoRua() {
-        const ruaSelecionada = inputRua?.value || '';
-        if (!ruaSelecionada) {
-            if (cardHistoricoRua) cardHistoricoRua.style.display = 'none';
-            return;
-        }
-        if (cardHistoricoRua) cardHistoricoRua.style.display = 'block';
-        if (ruaAtualHistorico) ruaAtualHistorico.textContent = ruaSelecionada;
-        
-        const contagensRua = state.contagensLocal.filter(c => c.rua === ruaSelecionada);
-        const contagemFinalizada = contagensRua.find(c => c.finalizada === true);
-        const numeroContagem = contagemFinalizada ? 2 : 1;
-        
-        if (indicadorContagem) {
-            if (contagensRua.length === 0) {
-                indicadorContagem.textContent = '📝 Esta será a PRIMEIRA contagem da rua ' + ruaSelecionada;
-                indicadorContagem.style.background = 'var(--accent-light)';
-                indicadorContagem.style.color = 'var(--accent)';
-            } else if (contagemFinalizada) {
-                indicadorContagem.textContent = '🔄 Esta será a SEGUNDA contagem da rua ' + ruaSelecionada;
-                indicadorContagem.style.background = 'var(--orange-light)';
-                indicadorContagem.style.color = 'var(--orange-dark)';
-            } else {
-                indicadorContagem.textContent = '📝 Contagem em andamento na rua ' + ruaSelecionada;
-                indicadorContagem.style.background = 'var(--green-light)';
-                indicadorContagem.style.color = 'var(--green-dark)';
-            }
-        }
-        
-        if (tabelaHistoricoRua) {
-            tabelaHistoricoRua.innerHTML = '';
-            if (contagensRua.length === 0) {
-                if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'block';
-            } else {
-                if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'none';
-                contagensRua.forEach(c => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = 
-                        '<td>' + Utils.escapeHTML(c.rua) + '</td>' +
-                        '<td>' + Utils.escapeHTML(c.codigo) + '</td>' +
-                        '<td>' + Utils.escapeHTML(c.descricao) + '</td>' +
-                        '<td>' + Utils.escapeHTML(c.embalagem) + '</td>' +
-                        '<td><strong>' + c.quantidade + '</strong></td>' +
-                        '<td>' + Utils.escapeHTML(c.observacoes || '--') + '</td>';
-                    tabelaHistoricoRua.appendChild(tr);
-                });
-            }
+    const ruaSelecionada = inputRua?.value || '';
+    if (!ruaSelecionada) {
+        if (cardHistoricoRua) cardHistoricoRua.style.display = 'none';
+        return;
+    }
+    if (cardHistoricoRua) cardHistoricoRua.style.display = 'block';
+    if (ruaAtualHistorico) ruaAtualHistorico.textContent = ruaSelecionada;
+    
+    // Separar contagens por número
+    const contagensPrimeira = state.contagensLocal.filter(c => c.rua === ruaSelecionada && c.contagem === 1);
+    const contagensSegunda = state.contagensLocal.filter(c => c.rua === ruaSelecionada && c.contagem === 2);
+    const contagensRua = [...contagensPrimeira, ...contagensSegunda];
+    
+    const primeiraFinalizada = contagensPrimeira.find(c => c.finalizada === true);
+    
+    if (indicadorContagem) {
+        if (contagensRua.length === 0) {
+            indicadorContagem.textContent = '📝 Esta será a PRIMEIRA contagem da rua ' + ruaSelecionada;
+            indicadorContagem.style.background = 'var(--accent-light)';
+            indicadorContagem.style.color = 'var(--accent)';
+        } else if (primeiraFinalizada) {
+            indicadorContagem.textContent = '🔄 PRIMEIRA contagem finalizada. Agora registrando a SEGUNDA contagem da rua ' + ruaSelecionada;
+            indicadorContagem.style.background = 'var(--orange-light)';
+            indicadorContagem.style.color = 'var(--orange-dark)';
+        } else {
+            indicadorContagem.textContent = '📝 PRIMEIRA contagem em andamento na rua ' + ruaSelecionada;
+            indicadorContagem.style.background = 'var(--green-light)';
+            indicadorContagem.style.color = 'var(--green-dark)';
         }
     }
     
-    // ============ FINALIZAR CONTAGEM ============
-    async function finalizarContagemRua() {
-        const ruaSelecionada = inputRua?.value || '';
-        if (!ruaSelecionada) { Utils.showToast('⚠️ Selecione uma rua primeiro', 'error'); return; }
-        
-        const contagensRua = state.contagensLocal.filter(c => c.rua === ruaSelecionada);
-        if (contagensRua.length === 0) { Utils.showToast('⚠️ Não há contagens para finalizar nesta rua', 'error'); return; }
-        
-        const jaFinalizada = contagensRua.find(c => c.finalizada === true);
-        const numeroContagem = jaFinalizada ? 2 : 1;
-        
-        const msg = jaFinalizada 
-            ? 'A rua ' + ruaSelecionada + ' já foi finalizada anteriormente.\nDeseja finalizar como SEGUNDA contagem?'
-            : 'Finalizar a PRIMEIRA contagem da rua ' + ruaSelecionada + '?\nTotal: ' + contagensRua.length + ' itens';
-        
-        if (!confirm(msg)) return;
-        
-        try {
+    if (tabelaHistoricoRua) {
+        tabelaHistoricoRua.innerHTML = '';
+        if (contagensRua.length === 0) {
+            if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'block';
+        } else {
+            if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'none';
             contagensRua.forEach(c => {
-                c.finalizada = true;
-                c.contagem = numeroContagem;
-                c.data_finalizacao = new Date().toISOString();
-                c.synced = false;
+                const tr = document.createElement('tr');
+                tr.innerHTML = 
+                    '<td>' + Utils.escapeHTML(c.rua) + '</td>' +
+                    '<td>' + Utils.escapeHTML(c.codigo) + '</td>' +
+                    '<td>' + Utils.escapeHTML(c.descricao) + '</td>' +
+                    '<td>' + Utils.escapeHTML(c.embalagem) + '</td>' +
+                    '<td><strong>' + c.quantidade + '</strong></td>' +
+                    '<td>' + Utils.escapeHTML(c.observacoes || '--') + '</td>';
+                tabelaHistoricoRua.appendChild(tr);
             });
-            saveContagens();
-            
-            if (Database.supabase && navigator.onLine) {
-                for (const c of contagensRua) {
-                    if (c.supabase_id) {
-                        await Database.updateContagem(c.supabase_id, {
-                            finalizada: true,
-                            contagem: numeroContagem,
-                            data_finalizacao: new Date().toISOString()
-                        });
-                        c.synced = true;
-                    }
-                }
-                saveContagens();
-            }
-            
-            Utils.showToast('✅ Rua ' + ruaSelecionada + ' finalizada! Contagem: ' + numeroContagem + 'ª', 'success');
-            atualizarHistoricoRua();
-            renderizarHistorico();
-            renderizarDashboard();
-            atualizarEstatisticas();
-        } catch (err) {
-            Utils.showToast('❌ Erro ao finalizar: ' + err.message, 'error');
         }
     }
+}
+    
+    // ============ FINALIZAR CONTAGEM ============
+    async function finalizarContagemRua() {
+    const ruaSelecionada = inputRua?.value || '';
+    if (!ruaSelecionada) { Utils.showToast('⚠️ Selecione uma rua primeiro', 'error'); return; }
+    
+    // Verificar se já existe contagem finalizada
+    const primeiraFinalizada = state.contagensLocal.find(c => c.rua === ruaSelecionada && c.finalizada === true);
+    
+    // Determinar qual contagem estamos finalizando
+    let numeroContagem = 1;
+    let contagensParaFinalizar;
+    
+    if (primeiraFinalizada) {
+        // Segunda contagem
+        numeroContagem = 2;
+        contagensParaFinalizar = state.contagensLocal.filter(c => 
+            c.rua === ruaSelecionada && 
+            c.contagem === 2 && 
+            c.finalizada === false
+        );
+    } else {
+        // Primeira contagem
+        numeroContagem = 1;
+        contagensParaFinalizar = state.contagensLocal.filter(c => 
+            c.rua === ruaSelecionada && 
+            c.contagem === 1 && 
+            c.finalizada === false
+        );
+    }
+    
+    if (contagensParaFinalizar.length === 0) {
+        Utils.showToast('⚠️ Não há contagens pendentes para finalizar nesta rua', 'error');
+        return;
+    }
+    
+    const msg = 'Finalizar a ' + numeroContagem + 'ª contagem da rua ' + ruaSelecionada + '?\nTotal: ' + contagensParaFinalizar.length + ' itens';
+    
+    if (!confirm(msg)) return;
+    
+    try {
+        contagensParaFinalizar.forEach(c => {
+            c.finalizada = true;
+            c.contagem = numeroContagem;
+            c.data_finalizacao = new Date().toISOString();
+            c.synced = false;
+        });
+        saveContagens();
+        
+        if (Database.supabase && navigator.onLine) {
+            for (const c of contagensParaFinalizar) {
+                if (c.supabase_id) {
+                    await Database.updateContagem(c.supabase_id, {
+                        finalizada: true,
+                        contagem: numeroContagem,
+                        data_finalizacao: new Date().toISOString()
+                    });
+                    c.synced = true;
+                }
+            }
+            saveContagens();
+        }
+        
+        Utils.showToast('✅ ' + numeroContagem + 'ª contagem da rua ' + ruaSelecionada + ' finalizada!', 'success');
+        atualizarHistoricoRua();
+        renderizarHistorico();
+        renderizarDashboard();
+        atualizarEstatisticas();
+    } catch (err) {
+        Utils.showToast('❌ Erro ao finalizar: ' + err.message, 'error');
+    }
+}
     
     // ============ RENDER ============
     function getHistoricoFiltrado() {
