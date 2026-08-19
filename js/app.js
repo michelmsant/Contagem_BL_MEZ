@@ -65,6 +65,12 @@
     const novoUsuario = $('#novoUsuario');
     const novaSenha = $('#novaSenha');
     const novoRole = $('#novoRole');
+    const tabelaHistoricoRua = $('#tabelaHistoricoRua');
+    const nenhumHistoricoRua = $('#nenhumHistoricoRua');
+    const cardHistoricoRua = $('#cardHistoricoRua');
+    const ruaAtualHistorico = $('#ruaAtualHistorico');
+    const indicadorContagem = $('#indicadorContagem');
+    const btnFinalizarRua = $('#btnFinalizarRua');
     
     const state = {
         produtosMapCodAcesso: new Map(),
@@ -120,6 +126,7 @@
         atualizarEstatisticas();
         atualizarBaseInfo();
         atualizarInfoImportacao();
+        atualizarHistoricoRua();
         
         if (localStorage.getItem('blmez_darkmode') === '1') {
             document.body.classList.add('dark-mode');
@@ -140,9 +147,7 @@
     async function syncFromSupabase() {
         if (!Database.supabase) return;
         try {
-            console.log('🔄 Buscando contagens do Supabase...');
             const remotas = await Database.fetchContagens();
-            
             if (remotas && remotas.length > 0) {
                 const remoteMapped = remotas.map(c => ({
                     localId: 'remote_' + c.id,
@@ -158,19 +163,16 @@
                     dataISO: c.created_at,
                     synced: true,
                     usuario: c.usuario || '',
-                    usuarioNome: c.usuario_nome || ''
+                    usuarioNome: c.usuario_nome || '',
+                    contagem: c.contagem || 1,
+                    finalizada: c.finalizada || false,
+                    data_finalizacao: c.data_finalizacao || null
                 }));
-                
                 const localNaoSync = state.contagensLocal.filter(c => !c.synced);
                 state.contagensLocal = [...remoteMapped, ...localNaoSync];
                 saveContagens();
-                console.log('✅ Sincronizado:', remoteMapped.length, 'contagens do Supabase');
-                return true;
             }
-        } catch (err) {
-            console.warn('⚠️ Erro ao sincronizar:', err.message);
-        }
-        return false;
+        } catch (err) {}
     }
     
     // ============ SIDEBAR ============
@@ -210,6 +212,7 @@
             if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
             if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
             if (nome === 'usuarios') renderizarUsuarios();
+            if (nome === 'contagem') atualizarHistoricoRua();
         }, 100);
         
         fecharSidebar();
@@ -307,7 +310,6 @@
     function loadContagens() {
         try {
             state.contagensLocal = JSON.parse(localStorage.getItem(Database.KEYS.CONTAGENS) || '[]');
-            // Remover campo faixa de dados antigos
             state.contagensLocal = state.contagensLocal.map(c => { delete c.faixa; return c; });
             state.pendingContagens = JSON.parse(localStorage.getItem(Database.KEYS.PENDING) || '[]');
             state.pendingContagens = state.pendingContagens.map(c => { delete c.faixa; return c; });
@@ -319,12 +321,8 @@
     }
     
     async function salvarContagem(contagem) {
-        // Remover faixa se existir (dados antigos)
         delete contagem.faixa;
-        
-        // Verificar duplicidade: MESMA rua E MESMO código
         const idx = state.contagensLocal.findIndex(c => c.rua === contagem.rua && c.codigo === contagem.codigo);
-        
         if (idx >= 0) {
             return new Promise(resolve => {
                 state.resolvendoDuplicidade = async (op) => {
@@ -339,6 +337,7 @@
                     }
                     saveContagens();
                     await enviarParaSupabase(state.contagensLocal[idx]);
+                    atualizarHistoricoRua();
                     renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
                     resolve(op);
                 };
@@ -346,11 +345,10 @@
                 modalDuplicidade.style.display = 'flex';
             });
         }
-        
-        // Nova contagem
         state.contagensLocal.push(contagem);
         saveContagens();
         await enviarParaSupabase(contagem);
+        atualizarHistoricoRua();
         return 'novo';
     }
     
@@ -362,7 +360,6 @@
             }
             return;
         }
-        
         try {
             if (contagem.supabase_id) {
                 await Database.updateContagem(contagem.supabase_id, {
@@ -371,7 +368,10 @@
                     data: contagem.data,
                     hora: contagem.hora,
                     usuario: contagem.usuario || '',
-                    usuario_nome: contagem.usuarioNome || ''
+                    usuario_nome: contagem.usuarioNome || '',
+                    contagem: contagem.contagem || 1,
+                    finalizada: contagem.finalizada || false,
+                    data_finalizacao: contagem.data_finalizacao || null
                 });
                 contagem.synced = true;
             } else {
@@ -385,14 +385,15 @@
                     data: contagem.data,
                     hora: contagem.hora,
                     usuario: contagem.usuario || '',
-                    usuario_nome: contagem.usuarioNome || ''
+                    usuario_nome: contagem.usuarioNome || '',
+                    contagem: contagem.contagem || 1,
+                    finalizada: contagem.finalizada || false
                 });
                 contagem.supabase_id = res.id;
                 contagem.synced = true;
             }
             saveContagens();
         } catch (err) {
-            console.error('❌ Erro Supabase:', err.message);
             if (!state.pendingContagens.find(p => p.localId === contagem.localId)) {
                 state.pendingContagens.push(contagem);
                 saveContagens();
@@ -412,6 +413,107 @@
         atualizarEstatisticas();
     }
     
+    // ============ HISTÓRICO DA RUA ============
+    function atualizarHistoricoRua() {
+        const ruaSelecionada = inputRua?.value || '';
+        if (!ruaSelecionada) {
+            if (cardHistoricoRua) cardHistoricoRua.style.display = 'none';
+            return;
+        }
+        if (cardHistoricoRua) cardHistoricoRua.style.display = 'block';
+        if (ruaAtualHistorico) ruaAtualHistorico.textContent = ruaSelecionada;
+        
+        const contagensRua = state.contagensLocal.filter(c => c.rua === ruaSelecionada);
+        const contagemFinalizada = contagensRua.find(c => c.finalizada === true);
+        const numeroContagem = contagemFinalizada ? 2 : 1;
+        
+        if (indicadorContagem) {
+            if (contagensRua.length === 0) {
+                indicadorContagem.textContent = '📝 Esta será a PRIMEIRA contagem da rua ' + ruaSelecionada;
+                indicadorContagem.style.background = 'var(--accent-light)';
+                indicadorContagem.style.color = 'var(--accent)';
+            } else if (contagemFinalizada) {
+                indicadorContagem.textContent = '🔄 Esta será a SEGUNDA contagem da rua ' + ruaSelecionada;
+                indicadorContagem.style.background = 'var(--orange-light)';
+                indicadorContagem.style.color = 'var(--orange-dark)';
+            } else {
+                indicadorContagem.textContent = '📝 Contagem em andamento na rua ' + ruaSelecionada;
+                indicadorContagem.style.background = 'var(--green-light)';
+                indicadorContagem.style.color = 'var(--green-dark)';
+            }
+        }
+        
+        if (tabelaHistoricoRua) {
+            tabelaHistoricoRua.innerHTML = '';
+            if (contagensRua.length === 0) {
+                if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'block';
+            } else {
+                if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'none';
+                contagensRua.forEach(c => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = 
+                        '<td>' + Utils.escapeHTML(c.rua) + '</td>' +
+                        '<td>' + Utils.escapeHTML(c.codigo) + '</td>' +
+                        '<td>' + Utils.escapeHTML(c.descricao) + '</td>' +
+                        '<td>' + Utils.escapeHTML(c.embalagem) + '</td>' +
+                        '<td><strong>' + c.quantidade + '</strong></td>' +
+                        '<td>' + Utils.escapeHTML(c.observacoes || '--') + '</td>';
+                    tabelaHistoricoRua.appendChild(tr);
+                });
+            }
+        }
+    }
+    
+    // ============ FINALIZAR CONTAGEM ============
+    async function finalizarContagemRua() {
+        const ruaSelecionada = inputRua?.value || '';
+        if (!ruaSelecionada) { Utils.showToast('⚠️ Selecione uma rua primeiro', 'error'); return; }
+        
+        const contagensRua = state.contagensLocal.filter(c => c.rua === ruaSelecionada);
+        if (contagensRua.length === 0) { Utils.showToast('⚠️ Não há contagens para finalizar nesta rua', 'error'); return; }
+        
+        const jaFinalizada = contagensRua.find(c => c.finalizada === true);
+        const numeroContagem = jaFinalizada ? 2 : 1;
+        
+        const msg = jaFinalizada 
+            ? 'A rua ' + ruaSelecionada + ' já foi finalizada anteriormente.\nDeseja finalizar como SEGUNDA contagem?'
+            : 'Finalizar a PRIMEIRA contagem da rua ' + ruaSelecionada + '?\nTotal: ' + contagensRua.length + ' itens';
+        
+        if (!confirm(msg)) return;
+        
+        try {
+            contagensRua.forEach(c => {
+                c.finalizada = true;
+                c.contagem = numeroContagem;
+                c.data_finalizacao = new Date().toISOString();
+                c.synced = false;
+            });
+            saveContagens();
+            
+            if (Database.supabase && navigator.onLine) {
+                for (const c of contagensRua) {
+                    if (c.supabase_id) {
+                        await Database.updateContagem(c.supabase_id, {
+                            finalizada: true,
+                            contagem: numeroContagem,
+                            data_finalizacao: new Date().toISOString()
+                        });
+                        c.synced = true;
+                    }
+                }
+                saveContagens();
+            }
+            
+            Utils.showToast('✅ Rua ' + ruaSelecionada + ' finalizada! Contagem: ' + numeroContagem + 'ª', 'success');
+            atualizarHistoricoRua();
+            renderizarHistorico();
+            renderizarDashboard();
+            atualizarEstatisticas();
+        } catch (err) {
+            Utils.showToast('❌ Erro ao finalizar: ' + err.message, 'error');
+        }
+    }
+    
     // ============ RENDER ============
     function getHistoricoFiltrado() {
         let lista = [...state.contagensLocal];
@@ -427,7 +529,7 @@
         const lista = getHistoricoFiltrado(); tabelaHistorico.innerHTML = '';
         if (!lista.length) { if (nenhumRegistro) nenhumRegistro.style.display = 'block'; }
         else { if (nenhumRegistro) nenhumRegistro.style.display = 'none';
-            lista.forEach(c => { const tr = document.createElement('tr'); tr.innerHTML = '<td>'+Utils.escapeHTML(c.rua)+'</td><td>'+Utils.escapeHTML(c.codigo)+' '+(c.synced?'☁️':'📱')+'</td><td>'+Utils.escapeHTML(c.descricao)+'</td><td>'+Utils.escapeHTML(c.embalagem)+'</td><td><strong>'+c.quantidade+'</strong></td><td>'+(c.data||'--')+'</td><td>'+(c.hora||'--')+'</td><td>'+Utils.escapeHTML(c.usuarioNome||c.usuario||'--')+'</td><td><button class="btn btn-outline btn-sm btn-editar" data-id="'+c.localId+'">✏️</button> <button class="btn btn-danger-text btn-sm btn-excluir" data-id="'+c.localId+'">🗑️</button></td>'; tabelaHistorico.appendChild(tr); });
+            lista.forEach(c => { const tr = document.createElement('tr'); tr.innerHTML = '<td>'+Utils.escapeHTML(c.rua)+'</td><td>'+Utils.escapeHTML(c.codigo)+' '+(c.synced?'☁️':'📱')+'</td><td>'+Utils.escapeHTML(c.descricao)+'</td><td>'+Utils.escapeHTML(c.embalagem)+'</td><td><strong>'+c.quantidade+'</strong></td><td>'+(c.data||'--')+'</td><td>'+(c.hora||'--')+'</td><td>'+Utils.escapeHTML(c.usuarioNome||c.usuario||'--')+'</td><td>'+(c.contagem||1)+'ª</td><td>'+(c.finalizada?'✅ Finalizada':'📝 Em andamento')+'</td><td><button class="btn btn-outline btn-sm btn-editar" data-id="'+c.localId+'">✏️</button> <button class="btn btn-danger-text btn-sm btn-excluir" data-id="'+c.localId+'">🗑️</button></td>'; tabelaHistorico.appendChild(tr); });
             tabelaHistorico.querySelectorAll('.btn-editar').forEach(b=>b.addEventListener('click',function(){const i=state.contagensLocal.findIndex(c=>c.localId===this.dataset.id);if(i>=0)editarContagem(i);}));
             tabelaHistorico.querySelectorAll('.btn-excluir').forEach(b=>b.addEventListener('click',function(){const i=state.contagensLocal.findIndex(c=>c.localId===this.dataset.id);if(i>=0)excluirContagem(i);}));
         }
@@ -435,10 +537,10 @@
     
     function renderizarDashboard() {
         if (!tabelaDashboard) return;
-        const ruas = {}; state.contagensLocal.forEach(c=>{if(!ruas[c.rua])ruas[c.rua]={itens:0,paletes:0,ultima:''};ruas[c.rua].itens++;ruas[c.rua].paletes+=c.quantidade;if(!ruas[c.rua].ultima||new Date(c.dataISO)>new Date(ruas[c.rua].ultima))ruas[c.rua].ultima=c.dataISO;});
+        const ruas = {}; state.contagensLocal.forEach(c=>{if(!ruas[c.rua])ruas[c.rua]={itens:0,paletes:0,ultima:'',contagem:1,finalizada:false};ruas[c.rua].itens++;ruas[c.rua].paletes+=c.quantidade;if(!ruas[c.rua].ultima||new Date(c.dataISO)>new Date(ruas[c.rua].ultima))ruas[c.rua].ultima=c.dataISO;if(c.contagem>ruas[c.rua].contagem)ruas[c.rua].contagem=c.contagem;if(c.finalizada)ruas[c.rua].finalizada=true;});
         tabelaDashboard.innerHTML = ''; const entradas = Object.entries(ruas);
         if (!entradas.length) { if (nenhumDashboard) nenhumDashboard.style.display = 'block'; }
-        else { if (nenhumDashboard) nenhumDashboard.style.display = 'none'; entradas.forEach(([rua,dados])=>{const dh=dados.ultima?Utils.formatDataHora(dados.ultima):{data:'--',hora:'--'};const tr=document.createElement('tr');tr.innerHTML='<td><strong>'+Utils.escapeHTML(rua)+'</strong></td><td>'+dados.itens+'</td><td>'+dados.paletes+'</td><td>'+dh.data+' '+dh.hora+'</td>';tabelaDashboard.appendChild(tr);}); }
+        else { if (nenhumDashboard) nenhumDashboard.style.display = 'none'; entradas.forEach(([rua,dados])=>{const dh=dados.ultima?Utils.formatDataHora(dados.ultima):{data:'--',hora:'--'};const tr=document.createElement('tr');tr.innerHTML='<td><strong>'+Utils.escapeHTML(rua)+'</strong></td><td>'+dados.itens+'</td><td>'+dados.paletes+'</td><td>'+dh.data+' '+dh.hora+'</td><td>'+dados.contagem+'ª</td><td>'+(dados.finalizada?'✅':'📝')+'</td>';tabelaDashboard.appendChild(tr);}); }
     }
     
     function editarContagem(index) {
@@ -447,7 +549,7 @@
         if (inputDescricao) inputDescricao.value = c.descricao; if (inputEmbalagem) inputEmbalagem.value = c.embalagem;
         if (inputQuantidade) inputQuantidade.value = c.quantidade; if (inputObservacoes) inputObservacoes.value = c.observacoes||'';
         state.contagensLocal.splice(index,1); state.pendingContagens = state.pendingContagens.filter(p=>p.localId!==c.localId);
-        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas(); atualizarHistoricoRua();
         abrirSecao('contagem'); Utils.showToast('Editando...','success');
     }
     
@@ -456,7 +558,7 @@
         const c = state.contagensLocal[index];
         if (c.supabase_id && Database.supabase) await Database.deleteContagem(c.supabase_id);
         state.contagensLocal.splice(index,1); state.pendingContagens = state.pendingContagens.filter(p=>p.localId!==c.localId);
-        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+        saveContagens(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas(); atualizarHistoricoRua();
     }
     
     function atualizarEstatisticas() {
@@ -491,24 +593,10 @@
         $('#menuSync')?.addEventListener('click', async () => { await syncFromSupabase(); await syncPendingContagens(); Utils.showToast('✅ Sincronizado!','success'); });
         $('#menuBackup')?.addEventListener('click', () => { if (!state.contagensLocal.length) return; Utils.downloadBlob(new Blob([JSON.stringify(state.contagensLocal)],{type:'application/json'}),'backup_'+new Date().toISOString().slice(0,10)+'.json'); });
         $('#menuRestore')?.addEventListener('click', () => restoreFileInput?.click());
-        if (restoreFileInput) restoreFileInput.addEventListener('change', (e) => { if(!e.target.files[0])return; const r=new FileReader(); r.onload=(ev)=>{try{const d=JSON.parse(ev.target.result);state.contagensLocal=d;state.pendingContagens=d.filter(c=>!c.synced);saveContagens();renderizarHistorico();renderizarDashboard();atualizarEstatisticas();}catch(ex){}}; r.readAsText(e.target.files[0]); e.target.value=''; });
+        if (restoreFileInput) restoreFileInput.addEventListener('change', (e) => { if(!e.target.files[0])return; const r=new FileReader(); r.onload=(ev)=>{try{const d=JSON.parse(ev.target.result);state.contagensLocal=d;state.pendingContagens=d.filter(c=>!c.synced);saveContagens();renderizarHistorico();renderizarDashboard();atualizarEstatisticas();atualizarHistoricoRua();}catch(ex){}}; r.readAsText(e.target.files[0]); e.target.value=''; });
         $('#menuLogout')?.addEventListener('click', () => { if (confirm('Sair?')) Auth.logout(); });
         
-        if (btnAddUser) btnAddUser.addEventListener('click', () => { 
-    const n = novoNome?.value.trim(), u = novoUsuario?.value.trim(), s = novaSenha?.value, r = novoRole?.value; 
-    if (!n || !u || !s) return;
-    if (!/^\d+$/.test(u)) { Utils.showToast('⚠️ Matrícula deve conter apenas números', 'error'); return; }
-    const res = Auth.cadastrar(n, u, s); 
-    if (res.sucesso) {
-        if (r === 'master') Auth.updateUser(u, { role: 'master' });
-        if (novoNome) novoNome.value = ''; 
-        if (novoUsuario) novoUsuario.value = ''; 
-        if (novaSenha) novaSenha.value = ''; 
-        renderizarUsuarios(); 
-    } else {
-        Utils.showToast('❌ ' + res.mensagem, 'error');
-    }
-});
+        if (btnAddUser) btnAddUser.addEventListener('click', () => { const n=novoNome?.value.trim(),u=novoUsuario?.value.trim(),s=novaSenha?.value,r=novoRole?.value; if(!n||!u||!s)return; if(!/^\d+$/.test(u)){Utils.showToast('⚠️ Matrícula deve conter apenas números','error');return;} const res=Auth.cadastrar(n,u,s); if(res.sucesso){if(r==='master')Auth.updateUser(u,{role:'master'});if(novoNome)novoNome.value='';if(novoUsuario)novoUsuario.value='';if(novaSenha)novaSenha.value='';renderizarUsuarios();}else{Utils.showToast('❌ '+res.mensagem,'error');} });
         
         if (importZoneMaster && fileInputMaster) {
             importZoneMaster.addEventListener('click', () => fileInputMaster.click());
@@ -519,6 +607,16 @@
         }
         btnRecarregarBase?.addEventListener('click', carregarBaseDoSupabase);
         
+        // Mudança de rua
+        if (inputRua) {
+            inputRua.addEventListener('change', () => { atualizarHistoricoRua(); });
+        }
+        
+        // Botão Finalizar
+        if (btnFinalizarRua) {
+            btnFinalizarRua.addEventListener('click', finalizarContagemRua);
+        }
+        
         if (inputCodigo) {
             inputCodigo.addEventListener('input', function() { this.classList.remove('input-success','input-error'); });
             inputCodigo.addEventListener('change', function() { processarCodigo(this.value); });
@@ -526,25 +624,18 @@
         }
         
         btnSalvar?.addEventListener('click', () => {
-    if (state.salvandoContagem) return;
-    
-    const rua = inputRua?.value || '';
-    const codigo = inputCodigo?.value.trim() || '';
-    
-    // Validar se código contém apenas números
-    if (!/^\d+$/.test(codigo)) {
-        Utils.showToast('⚠️ Código deve conter apenas números', 'error');
-        if (inputCodigo) inputCodigo.focus();
-        return;
-    }
+            if (state.salvandoContagem) return;
+            const rua = inputRua?.value || '';
+            const codigo = inputCodigo?.value.trim() || '';
             const desc = inputDescricao?.value.trim() || '';
             const emb = inputEmbalagem?.value.trim() || '';
             const qtd = parseInt(inputQuantidade?.value) || 0;
             const obs = inputObservacoes?.value.trim() || '';
             if (!rua || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos','error'); return; }
+            if (!/^\d+$/.test(codigo)) { Utils.showToast('⚠️ Código deve conter apenas números','error'); return; }
             state.salvandoContagem = true;
             const dh = Utils.formatDataHora(new Date());
-            const contagem = { localId: Utils.generateId(), rua, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome };
+            const contagem = { localId: Utils.generateId(), rua, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome, contagem: 1, finalizada: false };
             salvarContagem(contagem).then(res => {
                 if (res !== 'cancelar') {
                     Utils.showToast('✅ Salvo!','success');
@@ -554,6 +645,7 @@
                     if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
                     if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
                     if (inputRua) inputRua.value = ruaSalva; if (inputCodigo) inputCodigo.focus();
+                    atualizarHistoricoRua();
                 }
                 renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
                 state.salvandoContagem = false;
@@ -566,6 +658,7 @@
             if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
             if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
             if (inputRua) inputRua.value = ruaAtual; if (inputCodigo) inputCodigo.focus();
+            atualizarHistoricoRua();
         });
         
         btnCamera?.addEventListener('click', () => { if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; } else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigoLido) => { if (inputCodigo) inputCodigo.value = codigoLido; processarCodigo(codigoLido); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); } });
@@ -576,8 +669,8 @@
         $('#btnSomarQuantidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar'); });
         $('#btnCancelarDuplicidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; state.resolvendoDuplicidade = null; });
         
-        btnExportCSV?.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Usuário:c.usuarioNome||''})); if(!dados.length)return; const cab=Object.keys(dados[0]).join(';'); Utils.downloadBlob(new Blob(['\uFEFF'+[cab,...dados.map(d=>Object.values(d).map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';'))].join('\n')],{type:'text/csv;charset=utf-8;'}),'contagem_'+new Date().toISOString().slice(0,10)+'.csv'); });
-        btnExportExcel?.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Usuário:c.usuarioNome||''})); if(!dados.length)return; const ws=XLSX.utils.json_to_sheet(dados);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Contagens');XLSX.writeFile(wb,'contagem_'+new Date().toISOString().slice(0,10)+'.xlsx'); });
+        btnExportCSV?.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Matrícula:c.usuarioNome||'',Contagem:(c.contagem||1)+'ª',Status:c.finalizada?'Finalizada':'Em andamento'})); if(!dados.length)return; const cab=Object.keys(dados[0]).join(';'); Utils.downloadBlob(new Blob(['\uFEFF'+[cab,...dados.map(d=>Object.values(d).map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';'))].join('\n')],{type:'text/csv;charset=utf-8;'}),'contagem_'+new Date().toISOString().slice(0,10)+'.csv'); });
+        btnExportExcel?.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Matrícula:c.usuarioNome||'',Contagem:(c.contagem||1)+'ª',Status:c.finalizada?'Finalizada':'Em andamento'})); if(!dados.length)return; const ws=XLSX.utils.json_to_sheet(dados);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Contagens');XLSX.writeFile(wb,'contagem_'+new Date().toISOString().slice(0,10)+'.xlsx'); });
         
         [filtroRua,filtroCodigo,filtroDescricao].forEach(i=>i?.addEventListener('input',renderizarHistorico));
         $$('thead th[data-sort]').forEach(th=>th.addEventListener('click',()=>{const col=th.dataset.sort;state.sortDirection=state.sortColumn===col?(state.sortDirection==='asc'?'desc':'asc'):'asc';state.sortColumn=col;renderizarHistorico();}));

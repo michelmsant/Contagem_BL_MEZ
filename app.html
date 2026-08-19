@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#1a2a4a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Contagem BL_MEZ</title>
-    <link rel="stylesheet" href="css/style.css?v=2.1">
+    <link rel="stylesheet" href="css/style.css?v=2.2">
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
@@ -61,7 +61,6 @@
                     <div class="card">
                         <div class="card-header"><span class="icon">🔢</span> Contagem de Estoque</div>
                         <div class="form-grid">
-                            <!-- Primeira linha: Rua e Código -->
                             <div class="form-group">
                                 <label>Rua</label>
                                 <select id="rua" style="padding:10px 12px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.95rem;font-family:var(--font);background:var(--surface);color:var(--text);width:100%;cursor:pointer;">
@@ -86,13 +85,11 @@
                                 </div>
                             </div>
                             
-                            <!-- Segunda linha: Descrição (ocupa 100% com largura maior) -->
                             <div class="form-group" style="grid-column: 1 / -1;">
                                 <label>Descrição</label>
                                 <input type="text" id="descricao" readonly style="height: 44px; font-size: 1rem; width: 100%;">
                             </div>
                             
-                            <!-- Terceira linha: Embalagem (esquerda) e Qtd. Paletes (direita) - MESMA LARGURA -->
                             <div class="form-group" style="grid-column: 1 / 2;">
                                 <label>Embalagem</label>
                                 <input type="text" id="embalagem" readonly style="width: 100%;">
@@ -102,7 +99,6 @@
                                 <input type="number" id="quantidade" value="1" min="1" style="width: 100%; text-align: center; font-size: 1rem; font-weight: 600;">
                             </div>
                             
-                            <!-- Quarta linha: Observações (ocupa 100%) -->
                             <div class="form-group" style="grid-column: 1 / -1;">
                                 <label>Observações</label>
                                 <input type="text" id="observacoes" style="width: 100%;">
@@ -111,6 +107,40 @@
                         <div class="btn-row">
                             <button class="btn btn-success" id="btnSalvar" style="width:auto;">✅ Salvar</button>
                             <button class="btn btn-outline" id="btnNovaContagem" style="width:auto;margin-top:0;">🔄 Limpar</button>
+                        </div>
+                    </div>
+
+                    <!-- HISTÓRICO DA RUA -->
+                    <div class="card" id="cardHistoricoRua" style="display:none;">
+                        <div class="card-header">
+                            <span class="icon">📋</span> Histórico da Rua: <span id="ruaAtualHistorico" style="color:var(--accent);font-weight:700;">--</span>
+                        </div>
+                        
+                        <div id="indicadorContagem" style="margin-bottom:16px;padding:12px 16px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent);font-weight:600;font-size:0.9rem;text-align:center;">
+                            Aguardando seleção de rua...
+                        </div>
+                        
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Rua</th>
+                                        <th>Código</th>
+                                        <th>Descrição</th>
+                                        <th>Embalagem</th>
+                                        <th>Qtd. Paletes</th>
+                                        <th>Observações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaHistoricoRua"></tbody>
+                            </table>
+                        </div>
+                        <p id="nenhumHistoricoRua" style="text-align:center;padding:20px;color:var(--text-secondary);">Nenhuma contagem para esta rua.</p>
+                        
+                        <div class="btn-row" style="margin-top:16px;justify-content:flex-end;">
+                            <button class="btn btn-success" id="btnFinalizarRua" style="width:auto;">
+                                ✅ Finalizar Contagem da Rua
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -171,6 +201,8 @@
                                         <th data-sort="data">Data</th>
                                         <th data-sort="hora">Hora</th>
                                         <th>Matrícula</th>
+                                        <th>Contagem</th>
+                                        <th>Status</th>
                                         <th>Ações</th>
                                     </tr>
                                 </thead>
@@ -202,6 +234,8 @@
                                         <th>Total de Itens</th>
                                         <th>Total de Paletes</th>
                                         <th>Última Contagem</th>
+                                        <th>Nº Contagem</th>
+                                        <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tabelaDashboard"></tbody>
