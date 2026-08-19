@@ -457,36 +457,41 @@
     if (cardHistoricoRua) cardHistoricoRua.style.display = 'block';
     if (ruaAtualHistorico) ruaAtualHistorico.textContent = ruaSelecionada;
     
-    // Separar contagens por número
-    const contagensPrimeira = state.contagensLocal.filter(c => c.rua === ruaSelecionada && c.contagem === 1);
-    const contagensSegunda = state.contagensLocal.filter(c => c.rua === ruaSelecionada && c.contagem === 2);
-    const contagensRua = [...contagensPrimeira, ...contagensSegunda];
+    // MOSTRAR APENAS CONTAGENS NÃO FINALIZADAS (em andamento)
+    const contagensPendentes = state.contagensLocal.filter(c => 
+        c.rua === ruaSelecionada && 
+        c.finalizada === false
+    );
     
-    const primeiraFinalizada = contagensPrimeira.find(c => c.finalizada === true);
+    // Verificar se a primeira contagem já foi finalizada
+    const primeiraFinalizada = state.contagensLocal.find(c => c.rua === ruaSelecionada && c.contagem === 1 && c.finalizada === true);
     
     if (indicadorContagem) {
-        if (contagensRua.length === 0) {
-            indicadorContagem.textContent = '📝 Esta será a PRIMEIRA contagem da rua ' + ruaSelecionada;
-            indicadorContagem.style.background = 'var(--accent-light)';
-            indicadorContagem.style.color = 'var(--accent)';
-        } else if (primeiraFinalizada) {
+        if (primeiraFinalizada) {
             indicadorContagem.textContent = '🔄 PRIMEIRA contagem finalizada. Agora registrando a SEGUNDA contagem da rua ' + ruaSelecionada;
             indicadorContagem.style.background = 'var(--orange-light)';
             indicadorContagem.style.color = 'var(--orange-dark)';
-        } else {
+        } else if (contagensPendentes.length > 0) {
             indicadorContagem.textContent = '📝 PRIMEIRA contagem em andamento na rua ' + ruaSelecionada;
             indicadorContagem.style.background = 'var(--green-light)';
             indicadorContagem.style.color = 'var(--green-dark)';
+        } else {
+            indicadorContagem.textContent = '📝 Aguardando itens para a contagem da rua ' + ruaSelecionada;
+            indicadorContagem.style.background = 'var(--accent-light)';
+            indicadorContagem.style.color = 'var(--accent)';
         }
     }
     
     if (tabelaHistoricoRua) {
         tabelaHistoricoRua.innerHTML = '';
-        if (contagensRua.length === 0) {
-            if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'block';
+        if (contagensPendentes.length === 0) {
+            if (nenhumHistoricoRua) {
+                nenhumHistoricoRua.textContent = 'Nenhuma contagem pendente para esta rua.';
+                nenhumHistoricoRua.style.display = 'block';
+            }
         } else {
             if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'none';
-            contagensRua.forEach(c => {
+            contagensPendentes.forEach(c => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = 
                     '<td>' + Utils.escapeHTML(c.rua) + '</td>' +
@@ -497,6 +502,15 @@
                     '<td>' + Utils.escapeHTML(c.observacoes || '--') + '</td>';
                 tabelaHistoricoRua.appendChild(tr);
             });
+        }
+    }
+    
+    // Ocultar botão de finalizar se não houver pendências
+    if (btnFinalizarRua) {
+        if (contagensPendentes.length === 0) {
+            btnFinalizarRua.style.display = 'none';
+        } else {
+            btnFinalizarRua.style.display = 'block';
         }
     }
 }
