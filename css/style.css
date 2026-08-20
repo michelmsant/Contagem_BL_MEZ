@@ -919,7 +919,7 @@ tbody tr:hover { background: var(--bg-secondary); }
     }
     
     #secaoContagem .form-group:has(#quantidade) {
-        grid-column: 1;
+        grid-column: 2;
     }
     
     /* Observações - linha cheia */
@@ -939,5 +939,94 @@ tbody tr:hover { background: var(--bg-secondary); }
     #secaoContagem .input-with-btn input,
     #secaoContagem .btn-camera {
         height: 40px;
+    }
+}
+/* ===== AJUSTE TABELA HISTÓRICO DA RUA (4 colunas) ===== */
+#tabelaRuaTable {
+    min-width: 100% !important;
+}
+
+#tabelaRuaTable thead th {
+    white-space: nowrap;
+    padding: 8px 6px;
+    font-size: 0.75rem;
+}
+
+#tabelaRuaTable tbody td {
+    padding: 8px 6px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+#tabelaRuaTable tbody td:first-child {
+    max-width: 60px;
+    font-weight: 600;
+}
+
+#tabelaRuaTable tbody td:nth-child(2) {
+    max-width: 80px;
+}
+
+#tabelaRuaTable tbody td:nth-child(3) {
+    max-width: 140px;
+    text-overflow: ellipsis;
+}
+
+#tabelaRuaTable tbody td:last-child {
+    max-width: 50px;
+    text-align: center;
+    font-weight: 700;
+}
+
+@media (max-width: 768px) {
+    #tabelaRuaTable {
+        min-width: 100% !important;
+        font-size: 0.75rem;
+    }
+    
+    #tabelaRuaTable thead th {
+        padding: 6px 4px;
+        font-size: 0.65rem;
+    }
+    
+    #tabelaRuaTable tbody td {
+        padding: 6px 4px;
+        font-size: 0.7rem;
+        max-width: 80px;
+    }
+    
+    #tabelaRuaTable tbody td:first-child {
+        max-width: 45px;
+    }
+    
+    #tabelaRuaTable tbody td:nth-child(2) {
+        max-width: 60px;
+    }
+    
+    #tabelaRuaTable tbody td:nth-child(3) {
+        max-width: 100px;
+    }
+    
+    #tabelaRuaTable tbody td:last-child {
+        max-width: 35px;
+    }
+}
+
+@media (max-width: 480px) {
+    #tabelaRuaTable thead th {
+        padding: 5px 3px;
+        font-size: 0.6rem;
+    }
+    
+    #tabelaRuaTable tbody td {
+        padding: 5px 3px;
+        font-size: 0.65rem;
+    }
+    
+    #tabelaRuaTable tbody td:nth-child(3) {
+        max-width: 70px;
     }
 }

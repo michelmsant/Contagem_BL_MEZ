@@ -467,27 +467,25 @@
     }
     
     if (tabelaHistoricoRua) {
-        tabelaHistoricoRua.innerHTML = '';
-        if (contagensPendentes.length === 0) {
-            if (nenhumHistoricoRua) {
-                nenhumHistoricoRua.textContent = 'Nenhuma contagem pendente para esta rua.';
-                nenhumHistoricoRua.style.display = 'block';
-            }
-        } else {
-            if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'none';
-            contagensPendentes.forEach(c => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = 
-                    '<td>' + Utils.escapeHTML(c.rua) + '</td>' +
-                    '<td>' + Utils.escapeHTML(c.codigo) + '</td>' +
-                    '<td>' + Utils.escapeHTML(c.descricao) + '</td>' +
-                    '<td>' + Utils.escapeHTML(c.embalagem) + '</td>' +
-                    '<td><strong>' + c.quantidade + '</strong></td>' +
-                    '<td>' + Utils.escapeHTML(c.observacoes || '--') + '</td>';
-                tabelaHistoricoRua.appendChild(tr);
-            });
+    tabelaHistoricoRua.innerHTML = '';
+    if (contagensPendentes.length === 0) {
+        if (nenhumHistoricoRua) {
+            nenhumHistoricoRua.textContent = 'Nenhuma contagem pendente para esta rua.';
+            nenhumHistoricoRua.style.display = 'block';
         }
+    } else {
+        if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'none';
+        contagensPendentes.forEach(c => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = 
+                '<td>' + Utils.escapeHTML(c.rua) + '</td>' +
+                '<td>' + Utils.escapeHTML(c.codigo) + '</td>' +
+                '<td>' + Utils.escapeHTML(c.descricao) + '</td>' +
+                '<td><strong>' + c.quantidade + '</strong></td>';
+            tabelaHistoricoRua.appendChild(tr);
+        });
     }
+}
     
     // Ocultar botão de finalizar se não houver pendências
     if (btnFinalizarRua) {
