@@ -91,34 +91,32 @@ const Database = {
     async saveContagem(contagem) {
         if (!this.supabase) return null;
         
-        console.log('💾 Salvando contagem no Supabase:', contagem);
+        console.log('💾 Salvando contagem no Supabase...');
         
         const { data, error } = await this.supabase
             .from('contagens')
             .insert([{
+                data: contagem.data || '',
                 rua: contagem.rua,
                 codigo: contagem.codigo,
                 descricao: contagem.descricao,
                 embalagem: contagem.embalagem,
                 quantidade: contagem.quantidade,
-                observacoes: contagem.observacoes || '',
-                data: contagem.data,
-                hora: contagem.hora,
-                usuario: contagem.usuario || '',
-                usuario_nome: contagem.usuarioNome || '',
                 contagem: contagem.contagem || 1,
-                finalizada: contagem.finalizada || false,
-                data_finalizacao: contagem.data_finalizacao || null
+                observacoes: contagem.observacoes || '',
+                matricula: contagem.usuario || '',
+                usuario: contagem.usuarioNome || ''
             }])
             .select('id')
             .single();
         
         if (error) {
             console.error('❌ Erro ao salvar:', error.message);
+            console.error('Detalhes:', error);
             throw error;
         }
         
-        console.log('✅ Contagem salva, ID:', data.id);
+        console.log('✅ Contagem salva no Supabase, ID:', data.id);
         return data;
     },
     

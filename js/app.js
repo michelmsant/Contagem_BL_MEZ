@@ -145,35 +145,33 @@
     
     // ============ SINCRONIZAR DO SUPABASE ============
     async function syncFromSupabase() {
-        if (!Database.supabase) return;
-        try {
-            const remotas = await Database.fetchContagens();
-            if (remotas && remotas.length > 0) {
-                const remoteMapped = remotas.map(c => ({
-                    localId: 'remote_' + c.id,
-                    supabase_id: c.id,
-                    rua: c.rua,
-                    codigo: c.codigo,
-                    descricao: c.descricao,
-                    embalagem: c.embalagem,
-                    quantidade: c.quantidade,
-                    observacoes: c.observacoes || '',
-                    data: c.data,
-                    hora: c.hora,
-                    dataISO: c.created_at,
-                    synced: true,
-                    usuario: c.usuario || '',
-                    usuarioNome: c.usuario_nome || '',
-                    contagem: c.contagem || 1,
-                    finalizada: c.finalizada || false,
-                    data_finalizacao: c.data_finalizacao || null
-                }));
-                const localNaoSync = state.contagensLocal.filter(c => !c.synced);
-                state.contagensLocal = [...remoteMapped, ...localNaoSync];
-                saveContagens();
-            }
-        } catch (err) {}
-    }
+    if (!Database.supabase) return;
+    try {
+        const remotas = await Database.fetchContagens();
+        if (remotas && remotas.length > 0) {
+            const remoteMapped = remotas.map(c => ({
+                localId: 'remote_' + c.id,
+                supabase_id: c.id,
+                data: c.data,
+                rua: c.rua,
+                codigo: c.codigo,
+                descricao: c.descricao,
+                embalagem: c.embalagem,
+                quantidade: c.quantidade,
+                contagem: c.contagem || 1,
+                observacoes: c.observacoes || '',
+                usuario: c.matricula || '',
+                usuarioNome: c.usuario || '',
+                dataISO: c.created_at,
+                finalizada: c.finalizada || false,
+                synced: true
+            }));
+            const localNaoSync = state.contagensLocal.filter(c => !c.synced);
+            state.contagensLocal = [...remoteMapped, ...localNaoSync];
+            saveContagens();
+        }
+    } catch (err) {}
+}
     
     // ============ SIDEBAR ============
     function abrirSidebar() {
@@ -396,44 +394,24 @@
     
     try {
         if (contagem.supabase_id) {
-            // Atualizar registro existente
             await Database.updateContagem(contagem.supabase_id, {
                 quantidade: contagem.quantidade,
                 observacoes: contagem.observacoes || '',
                 data: contagem.data,
-                hora: contagem.hora,
-                usuario: contagem.usuario || '',
-                usuario_nome: contagem.usuarioNome || '',
                 contagem: contagem.contagem || 1,
-                finalizada: contagem.finalizada || false,
-                data_finalizacao: contagem.data_finalizacao || null
+                finalizada: contagem.finalizada || false
             });
             contagem.synced = true;
             console.log('✅ Atualizado no Supabase, ID:', contagem.supabase_id);
         } else {
-            // Criar novo registro
-            const res = await Database.saveContagem({
-                rua: contagem.rua,
-                codigo: contagem.codigo,
-                descricao: contagem.descricao,
-                embalagem: contagem.embalagem,
-                quantidade: contagem.quantidade,
-                observacoes: contagem.observacoes || '',
-                data: contagem.data,
-                hora: contagem.hora,
-                usuario: contagem.usuario || '',
-                usuario_nome: contagem.usuarioNome || '',
-                contagem: contagem.contagem || 1,
-                finalizada: contagem.finalizada || false,
-                data_finalizacao: contagem.data_finalizacao || null
-            });
+            const res = await Database.saveContagem(contagem);
             contagem.supabase_id = res.id;
             contagem.synced = true;
             console.log('✅ Criado no Supabase, ID:', res.id);
         }
         saveContagens();
     } catch (err) {
-        console.error('❌ Erro ao enviar para Supabase:', err.message);
+        console.error('❌ Erro Supabase:', err.message);
         if (!state.pendingContagens.find(p => p.localId === contagem.localId)) {
             state.pendingContagens.push(contagem);
             saveContagens();
