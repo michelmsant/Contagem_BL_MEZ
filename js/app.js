@@ -87,8 +87,9 @@
     
     // ============ INICIALIZAÇÃO ============
     async function init() {
-        console.log('🚀 Iniciando Contagem BL_MEZ...');
-        
+    console.log('🚀 Iniciando Contagem BL_MEZ...');
+    
+    try {
         if (userNameDisplay) userNameDisplay.textContent = '👤 ' + (currentUser.nome || currentUser.usuario);
         
         if (isMaster) {
@@ -106,21 +107,7 @@
         const ultimaRua = localStorage.getItem(ULTIMA_RUA_KEY);
         if (ultimaRua && inputRua) inputRua.value = ultimaRua;
         
-        const dbOk = Database.init();
-        state.dbConnected = dbOk;
-        updateConnectionDot();
-        
-        if (dbOk) {
-            const testOk = await Database.testConnection();
-            state.dbConnected = testOk;
-            updateConnectionDot();
-            if (testOk) {
-                await carregarBaseDoSupabase();
-                await syncFromSupabase();
-                await syncPendingContagens();
-            }
-        }
-        
+        // Renderizar interface PRIMEIRO (rápido)
         renderizarHistorico();
         renderizarDashboard();
         atualizarEstatisticas();
@@ -136,12 +123,39 @@
         
         setupEventListeners();
         abrirSecao('contagem');
-        console.log('✅ Pronto! Contagens:', state.contagensLocal.length);
+        
+        console.log('✅ Interface pronta!');
+        
+        // Conectar ao Supabase em SEGUNDO PLANO (não bloqueia)
+        setTimeout(async () => {
+            try {
+                const dbOk = Database.init();
+                state.dbConnected = dbOk;
+                updateConnectionDot();
+                
+                if (dbOk) {
+                    const testOk = await Database.testConnection();
+                    state.dbConnected = testOk;
+                    updateConnectionDot();
+                    
+                    if (testOk) {
+                        await carregarBaseDoSupabase();
+                        await syncFromSupabase();
+                        await syncPendingContagens();
+                        atualizarHistoricoRua();
+                        renderizarHistorico();
+                        renderizarDashboard();
+                    }
+                }
+            } catch (err) {
+                console.warn('⚠️ Erro Supabase (não bloqueia):', err.message);
+            }
+        }, 500);
+        
+    } catch (err) {
+        console.error('❌ Erro na inicialização:', err);
     }
-    
-    function updateConnectionDot() {
-        if (connectionDot) connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
-    }
+}
     
     // ============ SINCRONIZAR DO SUPABASE ============
     async function syncFromSupabase() {
@@ -184,7 +198,8 @@
         if (sidebarOverlay) sidebarOverlay.classList.remove('open');
     }
     
-    async function abrirSecao(nome) {
+    function abrirSecao(nome) {
+    try {
         ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.classList.remove('active');
@@ -199,22 +214,23 @@
             if (item.dataset.section === nome) item.classList.add('active');
         });
         
-        if (nome === 'historico' || nome === 'dashboard') {
-            if (Database.supabase && navigator.onLine) {
-                await syncFromSupabase();
-            }
-        }
-        
         setTimeout(() => {
-            if (nome === 'historico') renderizarHistorico();
-            if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
-            if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
-            if (nome === 'usuarios') renderizarUsuarios();
-            if (nome === 'contagem') atualizarHistoricoRua();
+            try {
+                if (nome === 'historico') renderizarHistorico();
+                if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
+                if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
+                if (nome === 'usuarios') renderizarUsuarios();
+                if (nome === 'contagem') atualizarHistoricoRua();
+            } catch (err) {
+                console.warn('⚠️ Erro ao abrir seção:', err.message);
+            }
         }, 100);
         
         fecharSidebar();
+    } catch (err) {
+        console.warn('⚠️ Erro abrirSecao:', err.message);
     }
+}
     
     // ============ BASE DE PRODUTOS ============
     async function carregarBaseDoSupabase() {
@@ -642,6 +658,7 @@ async function enviarParaSupabase(contagem) {
     
     // ============ EVENTOS ============
     function setupEventListeners() {
+        try {
         if (hamburgerBtn) hamburgerBtn.addEventListener('click', abrirSidebar);
         if (sidebarClose) sidebarClose.addEventListener('click', fecharSidebar);
         if (sidebarOverlay) sidebarOverlay.addEventListener('click', fecharSidebar);
@@ -738,7 +755,9 @@ async function enviarParaSupabase(contagem) {
         document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&Camera.isOpen){Camera.close();if(modalCamera)modalCamera.style.display='none';}if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();btnSalvar?.click();}});
         window.addEventListener('online',async()=>{state.dbConnected=true;updateConnectionDot();if(Database.supabase){await syncPendingContagens();}});
         window.addEventListener('offline',()=>{state.dbConnected=false;updateConnectionDot();});
+    } catch (err) {
+    console.warn('⚠️ Erro nos eventos:', err.message);
     }
-    
+}
     init();
 })();
