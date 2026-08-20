@@ -431,15 +431,6 @@
     return 'novo';
 }
     
-    async function enviarParaSupabase(contagem) {
-    if (!Database.supabase || !navigator.onLine) {
-        if (!state.pendingContagens.find(p => p.localId === contagem.localId)) {
-            state.pendingContagens.push(contagem);
-            saveContagens();
-        }
-        return;
-    }
-    
     try {
         if (contagem.supabase_id) {
             await Database.updateContagem(contagem.supabase_id, {
