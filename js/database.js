@@ -89,36 +89,37 @@ const Database = {
     },
     
     async saveContagem(contagem) {
-        if (!this.supabase) return null;
-        
-        console.log('💾 Salvando contagem no Supabase...');
-        
-        const { data, error } = await this.supabase
-            .from('contagens')
-            .insert([{
-                data: contagem.data || '',
-                rua: contagem.rua,
-                codigo: contagem.codigo,
-                descricao: contagem.descricao,
-                embalagem: contagem.embalagem,
-                quantidade: contagem.quantidade,
-                contagem: contagem.contagem || 1,
-                observacoes: contagem.observacoes || '',
-                matricula: contagem.usuario || '',
-                usuario: contagem.usuarioNome || ''
-            }])
-            .select('id')
-            .single();
-        
-        if (error) {
-            console.error('❌ Erro ao salvar:', error.message);
-            console.error('Detalhes:', error);
-            throw error;
-        }
-        
-        console.log('✅ Contagem salva no Supabase, ID:', data.id);
-        return data;
-    },
+    if (!this.supabase) return null;
+    
+    console.log('💾 Salvando no Supabase:', contagem);
+    
+    const { data, error } = await this.supabase
+        .from('contagens')
+        .insert([{
+            data: contagem.data || '',
+            rua: contagem.rua,
+            codigo: contagem.codigo,
+            descricao: contagem.descricao,
+            embalagem: contagem.embalagem,
+            quantidade: contagem.quantidade,
+            contagem: contagem.contagem || 1,
+            observacoes: contagem.observacoes || '',
+            matricula: contagem.matricula || '',
+            usuario: contagem.usuario || ''
+        }])
+        .select('id')
+        .single();
+    
+    if (error) {
+        console.error('❌ Erro ao salvar:', error.message);
+        console.error('Detalhes:', error.details);
+        console.error('Hint:', error.hint);
+        throw error;
+    }
+    
+    console.log('✅ Salvo no Supabase, ID:', data.id);
+    return data;
+},
     
     async updateContagem(id, dados) {
     if (!this.supabase) return;
