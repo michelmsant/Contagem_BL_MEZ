@@ -121,13 +121,18 @@ const Database = {
     },
     
     async updateContagem(id, dados) {
-        if (!this.supabase) return;
-        const { error } = await this.supabase
-            .from('contagens')
-            .update(dados)
-            .eq('id', id);
-        if (error) throw error;
-    },
+    if (!this.supabase) return;
+    console.log('🔄 Atualizando contagem ID:', id, 'com dados:', dados);
+    const { error } = await this.supabase
+        .from('contagens')
+        .update(dados)
+        .eq('id', id);
+    if (error) {
+        console.error('❌ Erro ao atualizar:', error.message);
+        throw error;
+    }
+    console.log('✅ Contagem atualizada com sucesso!');
+},
     
     async deleteContagem(id) {
         if (!this.supabase) return;
