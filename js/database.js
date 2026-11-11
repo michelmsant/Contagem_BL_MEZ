@@ -1,13 +1,12 @@
 // ============================================================
-// DATABASE.JS - Conexão com Supabase (CORRIGIDO)
+// DATABASE.JS - Conexão com Supabase
 // ============================================================
 
 const Database = {
     supabase: null,
     
-    // Credenciais fixas
     URL: 'https://qsfljxfhjpomrtznbzur.supabase.co',
-    ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzZmxqeGZoanBvbXJ0em5ienVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzODI4MTYsImV4cCI6MjA5OTk1ODgxNn0.zR_N6WJCsc1HzAFjlfqEz6lVUutQLNDy8LTj8HIGAPd8',
+    ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzZmxqeGZoanBvbXJ0em5ienVyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDM4MjgxNiwiZXhwIjoyMDk5OTU4ODE2fQ.ix1w_IQndEQRqnhQ34FRW9_1_sSHVNFZEQ2sQhMyovY',
     
     KEYS: {
         CONTAGENS: 'blmez_contagens',
@@ -15,131 +14,76 @@ const Database = {
         BASE_META: 'blmez_base_meta'
     },
     
-    // Inicializar - CHAMADO APÓS O CARREGAMENTO DO SUPABASE SDK
     init() {
+        console.log('🔌 Inicializando Supabase...');
         try {
             if (typeof window.supabase === 'undefined') {
-                console.error('❌ Supabase SDK não carregado!');
+                console.error('❌ SDK do Supabase não carregado');
                 return false;
             }
-            
-            this.supabase = window.supabase.createClient(this.URL, this.ANON_KEY);
-            console.log('✅ Supabase conectado! URL:', this.URL);
+            this.supabase = window.supabase.createClient(this.URL, this.ANON_KEY, {
+                auth: { persistSession: false, autoRefreshToken: false }
+            });
+            console.log('✅ Cliente Supabase criado');
             return true;
         } catch (e) {
-            console.error('❌ Erro ao conectar Supabase:', e.message);
+            console.error('❌ Erro:', e.message);
             return false;
         }
     },
     
-    // Testar conexão real
     async testConnection() {
-        if (!this.supabase) {
-            console.error('❌ testConnection: supabase é null');
-            return false;
-        }
-        
+        if (!this.supabase) return false;
         try {
-            const { data, error } = await this.supabase
-                .from('produtos')
-                .select('id', { count: 'exact', head: true });
-            
-            if (error) {
-                console.error('❌ Erro no teste:', error.message);
-                return false;
-            }
-            
-            console.log('✅ Conexão OK - Tabela produtos acessível');
-            return true;
-        } catch (e) {
-            console.error('❌ Exceção no teste:', e.message);
-            return false;
-        }
+            const { error } = await this.supabase.from('produtos').select('id', { count: 'exact', head: true });
+            return !error;
+        } catch (e) { return false; }
     },
     
-    // Buscar produtos
     async fetchProdutos() {
-        if (!this.supabase) {
-            console.error('❌ fetchProdutos: supabase é null');
-            return [];
-        }
-        
-        console.log('🔄 Buscando produtos...');
-        
-        try {
-            const { data, error } = await this.supabase
-                .from('produtos')
-                .select('*');
-            
-            if (error) {
-                console.error('❌ Erro ao buscar:', error.message);
-                throw error;
+        if (!this.supabase) return [];
+        let todos = [];
+        let pagina = 0;
+        const limite = 1000;
+        let temMais = true;
+        while (temMais) {
+            const inicio = pagina * limite;
+            const fim = inicio + limite - 1;
+            const { data, error } = await this.supabase.from('produtos').select('*').range(inicio, fim);
+            if (error) throw error;
+            if (data && data.length > 0) {
+                todos = todos.concat(data);
+                if (data.length < limite) temMais = false;
+                else pagina++;
+            } else {
+                temMais = false;
             }
-            
-            console.log(`✅ ${data?.length || 0} produtos encontrados`);
-            return data || [];
-        } catch (e) {
-            console.error('❌ Exceção ao buscar:', e.message);
-            throw e;
         }
+        return todos;
     },
     
-    // Limpar e inserir produtos
     async replaceProdutos(produtosArray, onProgress) {
         if (!this.supabase) throw new Error('Supabase não conectado');
-        
-        console.log('🧹 Limpando tabela...');
-        
-        // Limpar
-        const { error: delError } = await this.supabase
-            .from('produtos')
-            .delete()
-            .neq('id', 0);
-        
-        if (delError) {
-            console.error('❌ Erro ao limpar:', delError.message);
-            throw delError;
-        }
-        
-        console.log(`📤 Enviando ${produtosArray.length} produtos...`);
-        
-        // Inserir em lotes
+        await this.supabase.from('produtos').delete().neq('id', 0);
         const BATCH = 500;
         const total = produtosArray.length;
-        
         for (let i = 0; i < total; i += BATCH) {
             const batch = produtosArray.slice(i, i + BATCH);
-            
-            const { error } = await this.supabase
-                .from('produtos')
-                .insert(batch);
-            
-            if (error) {
-                console.error(`❌ Erro no lote ${i}:`, error.message);
-                throw error;
-            }
-            
-            if (onProgress) {
-                onProgress(Math.round(((i + batch.length) / total) * 100));
-            }
-            
+            const { error } = await this.supabase.from('produtos').insert(batch);
+            if (error) throw error;
+            if (onProgress) onProgress(Math.round(((i + batch.length) / total) * 100));
             await new Promise(r => setTimeout(r, 80));
         }
-        
-        console.log('✅ Todos produtos enviados!');
         return true;
     },
     
-    // Contagens
     async fetchContagens() {
         if (!this.supabase) return [];
-        
         const { data, error } = await this.supabase
             .from('contagens')
             .select('*')
             .order('created_at', { ascending: false })
             .limit(5000);
-        
         if (error) throw error;
         return data || [];
     },
@@ -147,14 +91,44 @@ const Database = {
     async saveContagem(contagem) {
         if (!this.supabase) return null;
         
+        console.log('💾 Salvando contagem no Supabase:', contagem);
+        
         const { data, error } = await this.supabase
             .from('contagens')
-            .insert([contagem])
+            .insert([{
+                rua: contagem.rua,
+                codigo: contagem.codigo,
+                descricao: contagem.descricao,
+                embalagem: contagem.embalagem,
+                quantidade: contagem.quantidade,
+                observacoes: contagem.observacoes || '',
+                data: contagem.data,
+                hora: contagem.hora,
+                usuario: contagem.usuario || '',
+                usuario_nome: contagem.usuarioNome || '',
+                contagem: contagem.contagem || 1,
+                finalizada: contagem.finalizada || false,
+                data_finalizacao: contagem.data_finalizacao || null
+            }])
             .select('id')
             .single();
         
-        if (error) throw error;
+        if (error) {
+            console.error('❌ Erro ao salvar:', error.message);
+            throw error;
+        }
+        
+        console.log('✅ Contagem salva, ID:', data.id);
         return data;
+    },
+    
+    async updateContagem(id, dados) {
+        if (!this.supabase) return;
+        const { error } = await this.supabase
+            .from('contagens')
+            .update(dados)
+            .eq('id', id);
+        if (error) throw error;
     },
     
     async deleteContagem(id) {
@@ -162,19 +136,13 @@ const Database = {
         await this.supabase.from('contagens').delete().eq('id', id);
     },
     
-    // Metadados
     saveBaseMeta(meta) {
-        try {
-            localStorage.setItem(this.KEYS.BASE_META, JSON.stringify(meta));
-        } catch (e) {}
+        try { localStorage.setItem(this.KEYS.BASE_META, JSON.stringify(meta)); } catch (e) {}
     },
     
     loadBaseMeta() {
-        try {
-            const data = localStorage.getItem(this.KEYS.BASE_META);
-            return data ? JSON.parse(data) : null;
-        } catch (e) {
-            return null;
-        }
+        try { return JSON.parse(localStorage.getItem(this.KEYS.BASE_META)); } catch (e) { return null; }
     }
 };
+
+console.log('📦 Database.js carregado');
