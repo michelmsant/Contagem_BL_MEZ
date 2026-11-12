@@ -1,31 +1,28 @@
-// ============================================================
-// APP.JS - Versão Final Corrigida
-// ============================================================
-
 (function() {
     'use strict';
     
-    // ============ VERIFICAÇÃO DE ACESSO ============
     const currentUser = Auth.checkAccess();
     if (!currentUser) return;
-    
     const isMaster = Auth.isMaster();
     
-    // ============ ATALHOS DOM ============
     const $ = (s) => document.querySelector(s);
     const $$ = (s) => document.querySelectorAll(s);
     
-    // Elementos
+    const ULTIMA_RUA_KEY = 'blmez_ultima_rua';
+    
+    // ============ ELEMENTOS DA TELA ============
+    const hamburgerBtn = $('#hamburgerBtn');
+    const sidebar = $('#sidebar');
+    const sidebarOverlay = $('#sidebarOverlay');
+    const sidebarClose = $('#sidebarClose');
+    const menuBase = $('#menuBase');
+    const menuHistorico = $('#menuHistorico');
+    const menuUsuarios = $('#menuUsuarios');
     const userNameDisplay = $('#userNameDisplay');
     const masterBadge = $('#masterBadge');
     const connectionDot = $('#connectionDot');
-    const hamburgerBtn = $('#hamburgerBtn');
-    const menuDropdown = $('#menuDropdown');
-    const tabBaseBtn = $('#tabBaseBtn');
-    const tabHistoricoBtn = $('#tabHistoricoBtn');
     const importInfo = $('#importInfo');
     const inputRua = $('#rua');
-    const inputFaixa = $('#faixa');
     const inputCodigo = $('#codigo');
     const inputDescricao = $('#descricao');
     const inputEmbalagem = $('#embalagem');
@@ -40,8 +37,9 @@
     const statUltima = $('#statUltima');
     const tabelaHistorico = $('#tabelaHistorico');
     const nenhumRegistro = $('#nenhumRegistro');
+    const tabelaDashboard = $('#tabelaDashboard');
+    const nenhumDashboard = $('#nenhumDashboard');
     const filtroRua = $('#filtroRua');
-    const filtroFaixa = $('#filtroFaixa');
     const filtroCodigo = $('#filtroCodigo');
     const filtroDescricao = $('#filtroDescricao');
     const modalDuplicidade = $('#modalDuplicidade');
@@ -57,758 +55,479 @@
     const progressFillMaster = $('#progressFillMaster');
     const importStatusMaster = $('#importStatusMaster');
     const baseInfo = $('#baseInfo');
+    const btnRecarregarBase = $('#btnRecarregarBase');
+    const restoreFileInput = $('#restoreFileInput');
+    const btnExportCSV = $('#btnExportCSV');
+    const btnExportExcel = $('#btnExportExcel');
+    const tabelaUsuarios = $('#tabelaUsuarios');
+    const nenhumUsuario = $('#nenhumUsuario');
+    const btnAddUser = $('#btnAddUser');
+    const novoNome = $('#novoNome');
+    const novoUsuario = $('#novoUsuario');
+    const novaSenha = $('#novaSenha');
+    const novoRole = $('#novoRole');
+    const tabelaHistoricoRua = $('#tabelaHistoricoRua');
+    const nenhumHistoricoRua = $('#nenhumHistoricoRua');
+    const cardHistoricoRua = $('#cardHistoricoRua');
+    const ruaAtualHistorico = $('#ruaAtualHistorico');
+    const indicadorContagem = $('#indicadorContagem');
+    const btnFinalizarRua = $('#btnFinalizarRua');
     
     // ============ ESTADO ============
     const state = {
         produtosMapCodAcesso: new Map(),
         produtosMapSeqProduto: new Map(),
         baseMeta: null,
-        contagensLocal: [],
-        pendingContagens: [],
+        contagensLocal: [],       // Contagens pendentes (ainda não finalizadas)
+        contagensFinalizadas: [], // Contagens que já foram para o Supabase
         sortColumn: null,
         sortDirection: 'asc',
         resolvendoDuplicidade: null,
-        dbConnected: false
+        dbConnected: false,
+        salvandoContagem: false
     };
     
     // ============ INICIALIZAÇÃO ============
     async function init() {
-        console.log('🚀 Iniciando Contagem BL_MEZ...');
-        
-        // Exibir usuário
-        userNameDisplay.textContent = `👤 ${currentUser.nome}`;
-        
-        // Configurações master
-        if (isMaster) {
-            masterBadge.style.display = 'inline';
-            tabBaseBtn.style.display = 'inline-block';
-            tabHistoricoBtn.style.display = 'inline-block';
+        try {
+            if (userNameDisplay) userNameDisplay.textContent = '👤 ' + (currentUser.nome || currentUser.usuario);
+            
+            if (isMaster) {
+                if (masterBadge) masterBadge.style.display = 'inline';
+                if (menuBase) menuBase.style.display = 'block';
+                if (menuHistorico) menuHistorico.style.display = 'block';
+                if (menuUsuarios) menuUsuarios.style.display = 'block';
+            }
+            
+            loadContagens();
+            
+            const meta = Database.loadBaseMeta();
+            if (meta && !state.baseMeta) state.baseMeta = meta;
+            
+            const ultimaRua = localStorage.getItem(ULTIMA_RUA_KEY);
+            if (ultimaRua && inputRua) inputRua.value = ultimaRua;
+            
+            if (localStorage.getItem('blmez_darkmode') === '1') {
+                document.body.classList.add('dark-mode');
+                const darkBtn = $('#menuDarkMode');
+                if (darkBtn) darkBtn.textContent = '☀️ Modo Claro';
+            }
+            
+            setupEventListeners();
+            abrirSecao('contagem');
+            
+            // Tenta carregar o banco em segundo plano para a tela abrir rápido
+            setTimeout(async () => {
+                const dbOk = Database.init();
+                state.dbConnected = dbOk;
+                updateConnectionDot();
+                
+                if (dbOk) {
+                    const testOk = await Database.testConnection();
+                    state.dbConnected = testOk;
+                    updateConnectionDot();
+                    if (testOk) {
+                        await carregarBaseDoSupabase();
+                        await syncFromSupabase();
+                    }
+                }
+                atualizarHistoricoRua();
+                renderizarHistorico();
+                renderizarDashboard();
+                atualizarEstatisticas();
+            }, 100);
+
+        } catch (err) {
+            console.error('❌ Erro na inicialização:', err);
         }
-        
-        // Inicializar Supabase
-        const dbOk = Database.init();
-        state.dbConnected = dbOk;
-        updateConnectionIndicator();
-        
-        // Carregar contagens locais
-        loadContagens();
-        
-        // Tentar carregar base do Supabase
-        if (dbOk) {
-            await carregarBaseDoSupabase();
-        } else {
-            importInfo.innerHTML = '<span style="color:var(--red);">❌ Supabase não conectado. Verifique o console.</span>';
-        }
-        
-        // Metadados
-        const meta = Database.loadBaseMeta();
-        if (meta && !state.baseMeta) {
-            state.baseMeta = meta;
-        }
-        
-        // Renderizar
-        atualizarInfoImportacao();
-        renderizarHistorico();
-        atualizarEstatisticas();
-        
-        // Sincronizar pendentes
-        if (dbOk && navigator.onLine) {
-            await syncPendingContagens();
-        }
-        
-        // Dark mode
-        if (localStorage.getItem('blmez_darkmode') === '1') {
-            document.body.classList.add('dark-mode');
-            $('#menuDarkMode').textContent = '☀️ Modo Claro';
-        }
-        
-        // Foco
-        inputRua.focus();
-        
-        console.log('✅ Pronto!');
-        console.log(`   Supabase: ${dbOk ? 'Conectado' : 'Offline'}`);
-        console.log(`   Produtos: ${state.produtosMapCodAcesso.size}`);
-        console.log(`   Contagens: ${state.contagensLocal.length}`);
     }
     
-    function updateConnectionIndicator() {
-        if (connectionDot) {
-            connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
-            connectionDot.title = state.dbConnected ? 'Supabase conectado' : 'Supabase offline';
-        }
+    function updateConnectionDot() {
+        if (connectionDot) connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
+    }
+    
+    async function syncFromSupabase() {
+        if (!Database.supabase) return;
+        try {
+            const remotas = await Database.fetchContagens();
+            if (remotas && remotas.length > 0) {
+                state.contagensFinalizadas = remotas.map(c => ({
+                    localId: 'remote_' + c.id, supabase_id: c.id, data: c.data, rua: c.rua, codigo: c.codigo, descricao: c.descricao, embalagem: c.embalagem, quantidade: c.quantidade, contagem: c.contagem || 1, observacoes: c.observacoes || '', usuario: c.matricula || '', usuarioNome: c.usuario || '', dataISO: c.created_at, finalizada: true, synced: true
+                }));
+                renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+            }
+        } catch (err) {}
+    }
+    
+    // ============ SIDEBAR ============
+    function abrirSidebar() { if (sidebar) sidebar.classList.add('open'); if (sidebarOverlay) sidebarOverlay.classList.add('open'); }
+    function fecharSidebar() { if (sidebar) sidebar.classList.remove('open'); if (sidebarOverlay) sidebarOverlay.classList.remove('open'); }
+    
+    function abrirSecao(nome) {
+        try {
+            ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.remove('active');
+            });
+            const mapa = { contagem: 'secaoContagem', base: 'secaoBase', historico: 'secaoHistorico', dashboard: 'secaoDashboard', usuarios: 'secaoUsuarios' };
+            const secao = document.getElementById(mapa[nome]);
+            if (secao) secao.classList.add('active');
+            
+            $$('.sidebar-item[data-section]').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.section === nome) item.classList.add('active');
+            });
+            
+            setTimeout(() => {
+                if (nome === 'historico') renderizarHistorico();
+                if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
+                if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
+                if (nome === 'usuarios') renderizarUsuarios();
+                if (nome === 'contagem') atualizarHistoricoRua();
+            }, 100);
+            fecharSidebar();
+        } catch (err) {}
     }
     
     // ============ BASE DE PRODUTOS ============
     async function carregarBaseDoSupabase() {
         if (!Database.supabase) return;
-        
         try {
-            console.log('🔄 Carregando base do Supabase...');
             const produtos = await Database.fetchProdutos();
-            
             if (produtos && produtos.length > 0) {
                 construirIndices(produtos);
-                
-                state.baseMeta = {
-                    nomeArquivo: 'Supabase',
-                    totalRegistros: produtos.length,
-                    dataHoraImportacao: new Date().toISOString()
-                };
-                
+                state.baseMeta = { nomeArquivo: 'Supabase', totalRegistros: produtos.length, dataHoraImportacao: new Date().toISOString() };
                 Database.saveBaseMeta(state.baseMeta);
-                atualizarInfoImportacao();
-                atualizarBaseInfo();
-                
-                console.log(`✅ ${produtos.length} produtos carregados`);
-                Utils.showToast(`✅ ${produtos.length} produtos carregados do Supabase`, 'success');
-            } else {
-                console.log('⚠️ Nenhum produto encontrado no Supabase');
-                importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Base vazia. Importe um arquivo TXT.</span>';
+                atualizarInfoImportacao(); atualizarBaseInfo();
             }
-        } catch (err) {
-            console.error('❌ Erro ao carregar base:', err);
-            importInfo.innerHTML = `<span style="color:var(--red);">❌ Erro: ${Utils.escapeHTML(err.message)}</span>`;
-            Utils.showToast('❌ Erro ao carregar base: ' + err.message, 'error');
-        }
+        } catch (err) {}
     }
     
     function construirIndices(produtos) {
-        state.produtosMapCodAcesso.clear();
-        state.produtosMapSeqProduto.clear();
-        
+        state.produtosMapCodAcesso.clear(); state.produtosMapSeqProduto.clear();
         for (const p of produtos) {
-            const embFormatada = p.embalagem && p.qtdembalagem 
-                ? `${p.embalagem} x ${p.qtdembalagem}` 
-                : (p.embalagem || p.qtdembalagem || '');
-            
-            const produto = {
-                seqProduto: p.seqproduto || '',
-                descCompleta: p.desccompleta || '',
-                codAcesso: p.codacesso || '',
-                embalagem: p.embalagem || '',
-                qtdEmbalagem: p.qtdembalagem || '',
-                embalagemFormatada: embFormatada
-            };
-            
-            if (produto.codAcesso) state.produtosMapCodAcesso.set(produto.codAcesso, produto);
-            if (produto.seqProduto) state.produtosMapSeqProduto.set(produto.seqProduto, produto);
+            const emb = p.embalagem && p.qtdembalagem ? p.embalagem + ' x ' + p.qtdembalagem : (p.embalagem || p.qtdembalagem || '');
+            const prod = { seqProduto: p.seqproduto || '', descCompleta: p.desccompleta || '', codAcesso: p.codacesso || '', embalagem: p.embalagem || '', qtdEmbalagem: p.qtdembalagem || '', embalagemFormatada: emb };
+            if (prod.codAcesso) state.produtosMapCodAcesso.set(prod.codAcesso, prod);
+            if (prod.seqProduto) state.produtosMapSeqProduto.set(prod.seqProduto, prod);
         }
     }
     
     async function importarBaseMaster(conteudo, nomeArquivo) {
-        if (!Database.supabase) {
-            Utils.showToast('❌ Supabase não conectado!', 'error');
-            return;
-        }
-        
-        progressBarMaster.classList.add('active');
-        progressFillMaster.style.width = '0%';
-        importStatusMaster.textContent = 'Processando arquivo...';
-        
+        if (!Database.supabase) { Utils.showToast('❌ Offline', 'error'); return; }
+        if(progressBarMaster) progressBarMaster.classList.add('active');
         try {
-            const linhas = conteudo.split(/\r?\n/).filter(l => l.trim() !== '');
-            if (linhas.length === 0) throw new Error('Arquivo vazio.');
-            
-            // Detectar delimitador
+            const linhas = conteudo.split(/\r?\n/).filter(l => l.trim());
+            if (!linhas.length) throw new Error('Vazio');
             const delimitadores = ['\t', ';', ','];
-            let delimitador = '\t';
-            let maxCols = 0;
-            for (const d of delimitadores) {
-                const cols = linhas[0].split(d).length;
-                if (cols > maxCols) { maxCols = cols; delimitador = d; }
-            }
-            
-            const primeiraCols = linhas[0].split(delimitador);
-            const pareceCabecalho = primeiraCols.some(c => /seqproduto|codacesso/i.test(c.trim()));
-            const inicioDados = pareceCabecalho ? 1 : 0;
-            
-            if (primeiraCols.length < 9) throw new Error('Arquivo precisa ter pelo menos 9 colunas.');
-            
-            const produtosParaSupabase = [];
-            
-            for (let i = inicioDados; i < linhas.length; i++) {
-                const cols = linhas[i].split(delimitador);
+            let del = '\t', max = 0;
+            delimitadores.forEach(d => { const c = linhas[0].split(d).length; if (c > max) { max = c; del = d; } });
+            const cab = linhas[0].split(del);
+            const inicio = cab.some(c => /seqproduto|codacesso/i.test(c)) ? 1 : 0;
+            if (cab.length < 9) throw new Error('9 colunas necessárias');
+            const arr = [];
+            for (let i = inicio; i < linhas.length; i++) {
+                const cols = linhas[i].split(del);
                 if (cols.length < 9) continue;
-                
-                const seqProduto = (cols[1] || '').trim();
-                const descCompleta = (cols[2] || '').trim();
-                const codAcesso = (cols[3] || '').trim();
-                const embalagem = (cols[7] || '').trim();
-                const qtdEmbalagem = (cols[8] || '').trim();
-                
-                if (!codAcesso && !seqProduto) continue;
-                
-                produtosParaSupabase.push({
-                    seqproduto: seqProduto,
-                    desccompleta: descCompleta,
-                    codacesso: codAcesso,
-                    embalagem,
-                    qtdembalagem: qtdEmbalagem
-                });
+                arr.push({ seqproduto: (cols[1]||'').trim(), desccompleta: (cols[2]||'').trim(), codacesso: (cols[3]||'').trim(), embalagem: (cols[7]||'').trim(), qtdembalagem: (cols[8]||'').trim() });
             }
-            
-            importStatusMaster.textContent = `Enviando ${produtosParaSupabase.length} produtos...`;
-            
-            // Enviar para Supabase (substitui)
-            await Database.replaceProdutos(produtosParaSupabase, (progresso) => {
-                progressFillMaster.style.width = progresso + '%';
-                importStatusMaster.textContent = `Enviando... ${progresso}%`;
-            });
-            
-            // Reconstruir índices locais
-            construirIndices(produtosParaSupabase.map(p => ({
-                seqproduto: p.seqproduto,
-                desccompleta: p.desccompleta,
-                codacesso: p.codacesso,
-                embalagem: p.embalagem,
-                qtdembalagem: p.qtdembalagem
-            })));
-            
-            state.baseMeta = {
-                nomeArquivo,
-                totalRegistros: state.produtosMapCodAcesso.size,
-                dataHoraImportacao: new Date().toISOString()
-            };
-            
+            await Database.replaceProdutos(arr, (p) => { if(progressFillMaster) progressFillMaster.style.width = p + '%'; });
+            construirIndices(arr.map(p => ({ seqproduto: p.seqproduto, desccompleta: p.desccompleta, codacesso: p.codacesso, embalagem: p.embalagem, qtdembalagem: p.qtdembalagem })));
+            state.baseMeta = { nomeArquivo, totalRegistros: state.produtosMapCodAcesso.size, dataHoraImportacao: new Date().toISOString() };
             Database.saveBaseMeta(state.baseMeta);
-            atualizarInfoImportacao();
-            atualizarBaseInfo();
-            
-            importStatusMaster.innerHTML = `<span style="color:var(--green);">✅ ${state.produtosMapCodAcesso.size} produtos importados com sucesso!</span>`;
-            Utils.showToast(`✅ ${state.produtosMapCodAcesso.size} produtos importados!`, 'success');
-            
+            atualizarInfoImportacao(); atualizarBaseInfo();
+            if(importStatusMaster) importStatusMaster.innerHTML = '<span style="color:green">✅ ' + state.produtosMapCodAcesso.size + ' produtos</span>';
         } catch (err) {
-            console.error('❌ Erro:', err);
-            importStatusMaster.innerHTML = `<span style="color:var(--red);">❌ ${Utils.escapeHTML(err.message)}</span>`;
-            Utils.showToast('❌ ' + err.message, 'error');
+            if(importStatusMaster) importStatusMaster.innerHTML = '<span style="color:red">❌ ' + Utils.escapeHTML(err.message) + '</span>';
         } finally {
-            progressBarMaster.classList.remove('active');
-            progressFillMaster.style.width = '0%';
+            if(progressBarMaster) progressBarMaster.classList.remove('active');
         }
     }
     
     function atualizarInfoImportacao() {
         if (!importInfo) return;
-        
-        if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) {
-            importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada.</span>';
-            return;
-        }
-        
-        const dh = state.baseMeta.dataHoraImportacao 
-            ? Utils.formatDataHora(state.baseMeta.dataHoraImportacao) 
-            : { data: '--', hora: '--' };
-        
-        importInfo.innerHTML = `
-            <span class="badge">📄 ${Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base')}</span>
-            <span class="badge">📊 ${state.produtosMapCodAcesso.size.toLocaleString('pt-BR')} registros</span>
-            <span>📅 ${dh.data} ${dh.hora}</span>
-            <span class="badge">☁️ Supabase</span>
-        `;
+        if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) { importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada.</span>'; return; }
+        const dh = Utils.formatDataHora(state.baseMeta.dataHoraImportacao);
+        importInfo.innerHTML = '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span> <span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span> <span>📅 ' + dh.data + ' ' + dh.hora + '</span>';
     }
     
-    function atualizarBaseInfo() {
-        if (baseInfo) {
-            baseInfo.textContent = `${state.produtosMapCodAcesso.size.toLocaleString('pt-BR')} produtos na base`;
-        }
-    }
+    function atualizarBaseInfo() { if (baseInfo) baseInfo.textContent = state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' produtos na base'; }
     
     // ============ PESQUISA ============
     function pesquisarProduto(codigo) {
-        if (!codigo || !codigo.trim()) return null;
-        const cod = codigo.trim();
-        
-        if (state.produtosMapCodAcesso.has(cod)) return state.produtosMapCodAcesso.get(cod);
-        if (state.produtosMapSeqProduto.has(cod)) return state.produtosMapSeqProduto.get(cod);
-        
-        for (const [key, val] of state.produtosMapCodAcesso) {
-            if (key.startsWith(cod)) return val;
-        }
-        
+        if (!codigo?.trim()) return null;
+        const c = codigo.trim();
+        if (state.produtosMapCodAcesso.has(c)) return state.produtosMapCodAcesso.get(c);
+        if (state.produtosMapSeqProduto.has(c)) return state.produtosMapSeqProduto.get(c);
+        for (const [k, v] of state.produtosMapCodAcesso) if (k.startsWith(c)) return v;
+        for (const [k, v] of state.produtosMapSeqProduto) if (k.startsWith(c)) return v;
         return null;
+    }
+    
+    function processarCodigo(codigoDigitado) {
+        if (!codigoDigitado?.trim()) { if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = ''; return; }
+        if (!state.produtosMapCodAcesso.size) { Utils.showToast('⚠️ Base vazia', 'error'); return; }
+        const produto = pesquisarProduto(codigoDigitado);
+        if (produto) {
+            if (inputDescricao) inputDescricao.value = produto.descCompleta;
+            if (inputEmbalagem) inputEmbalagem.value = produto.embalagemFormatada;
+            if (inputCodigo) { inputCodigo.value = produto.seqProduto || codigoDigitado; inputCodigo.classList.add('input-success'); setTimeout(() => inputCodigo?.classList.remove('input-success'), 1500); }
+            Utils.playBeep(); Utils.vibrate(40);
+        } else {
+            if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
+            if (inputCodigo) { inputCodigo.classList.add('input-error'); setTimeout(() => inputCodigo?.classList.remove('input-error'), 1500); }
+            Utils.showToast('❌ Não encontrado', 'error');
+        }
     }
     
     // ============ CONTAGENS ============
     function loadContagens() {
         try {
             state.contagensLocal = JSON.parse(localStorage.getItem(Database.KEYS.CONTAGENS) || '[]');
-            state.pendingContagens = JSON.parse(localStorage.getItem(Database.KEYS.PENDING) || '[]');
-        } catch (e) {
-            state.contagensLocal = [];
-            state.pendingContagens = [];
-        }
+        } catch (e) { state.contagensLocal = []; }
     }
     
     function saveContagens() {
-        try {
-            localStorage.setItem(Database.KEYS.CONTAGENS, JSON.stringify(state.contagensLocal));
-            localStorage.setItem(Database.KEYS.PENDING, JSON.stringify(state.pendingContagens));
-        } catch (e) {}
+        try { localStorage.setItem(Database.KEYS.CONTAGENS, JSON.stringify(state.contagensLocal)); } catch (e) {}
     }
     
     async function salvarContagem(contagem) {
-        const existente = state.contagensLocal.findIndex(c =>
-            c.rua === contagem.rua && c.faixa === contagem.faixa && c.codigo === contagem.codigo
-        );
+        delete contagem.faixa;
+        const ruaFinalizada = state.contagensFinalizadas.find(c => c.rua === contagem.rua && c.contagem === 1);
+        const numeroContagemAtual = ruaFinalizada ? 2 : 1;
+        contagem.contagem = numeroContagemAtual;
+        contagem.finalizada = false; contagem.synced = false; contagem.supabase_id = null;
         
-        if (existente >= 0) {
-            return new Promise((resolve) => {
-                state.resolvendoDuplicidade = (opcao) => {
-                    if (opcao === 'editar') {
-                        state.contagensLocal[existente] = { ...contagem, synced: false, localId: state.contagensLocal[existente].localId };
-                    } else if (opcao === 'somar') {
-                        state.contagensLocal[existente].quantidade += contagem.quantidade;
-                        state.contagensLocal[existente].synced = false;
-                    }
-                    saveContagens();
+        const idx = state.contagensLocal.findIndex(c => c.rua === contagem.rua && c.codigo === contagem.codigo && c.contagem === numeroContagemAtual && c.finalizada === false);
+        
+        if (idx >= 0) {
+            return new Promise(resolve => {
+                state.resolvendoDuplicidade = (op) => {
                     state.resolvendoDuplicidade = null;
-                    resolve(opcao);
+                    if (op === 'editar') {
+                        state.contagensLocal[idx] = { ...contagem, synced: false, localId: state.contagensLocal[idx].localId, contagem: numeroContagemAtual, finalizada: false };
+                    } else if (op === 'somar') {
+                        state.contagensLocal[idx].quantidade += contagem.quantidade;
+                        state.contagensLocal[idx].observacoes = contagem.observacoes || state.contagensLocal[idx].observacoes || '';
+                        state.contagensLocal[idx].data = contagem.data; state.contagensLocal[idx].hora = contagem.hora; state.contagensLocal[idx].dataISO = contagem.dataISO;
+                        state.contagensLocal[idx].usuario = contagem.usuario; state.contagensLocal[idx].usuarioNome = contagem.usuarioNome;
+                        state.contagensLocal[idx].contagem = numeroContagemAtual;
+                    } else { resolve(op); return; }
+                    saveContagens(); atualizarHistoricoRua(); resolve(op);
                 };
-                
-                msgDuplicidade.innerHTML = `
-                    <strong>${state.contagensLocal[existente].rua}</strong> /
-                    Faixa ${state.contagensLocal[existente].faixa}<br>
-                    Qtd atual: ${state.contagensLocal[existente].quantidade} |
-                    Nova: ${contagem.quantidade}
-                `;
-                modalDuplicidade.style.display = 'flex';
+                if(msgDuplicidade) msgDuplicidade.innerHTML = '<strong>' + Utils.escapeHTML(state.contagensLocal[idx].rua) + '</strong><br>Código: ' + Utils.escapeHTML(state.contagensLocal[idx].codigo) + '<br>Contagem: ' + numeroContagemAtual + 'ª<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Somar: ' + contagem.quantidade;
+                if(modalDuplicidade) modalDuplicidade.style.display = 'flex';
             });
         }
-        
-        state.contagensLocal.push(contagem);
-        state.pendingContagens.push(contagem);
-        saveContagens();
-        
-        if (Database.supabase && navigator.onLine) {
-            await syncPendingContagens();
-        }
-        
-        return 'novo';
+        state.contagensLocal.push(contagem); saveContagens(); atualizarHistoricoRua(); return 'novo';
     }
     
-    async function syncPendingContagens() {
-        if (!Database.supabase || state.pendingContagens.length === 0) return;
+    // ============ HISTÓRICO DA RUA ============
+    function atualizarHistoricoRua() {
+        const ruaSelecionada = inputRua?.value || '';
+        if (!ruaSelecionada) { if (cardHistoricoRua) cardHistoricoRua.style.display = 'none'; return; }
+        if (cardHistoricoRua) cardHistoricoRua.style.display = 'block';
+        if (ruaAtualHistorico) ruaAtualHistorico.textContent = ruaSelecionada;
         
-        let count = 0;
-        for (const cont of [...state.pendingContagens]) {
-            try {
-                const result = await Database.saveContagem({
-                    rua: cont.rua, faixa: cont.faixa, codigo: cont.codigo,
-                    descricao: cont.descricao, embalagem: cont.embalagem,
-                    quantidade: cont.quantidade, observacoes: cont.observacoes || '',
-                    data: cont.data, hora: cont.hora
+        const contagensPendentes = state.contagensLocal.filter(c => c.rua === ruaSelecionada && c.finalizada === false);
+        const ruaFinalizada = state.contagensFinalizadas.find(c => c.rua === ruaSelecionada && c.contagem === 1);
+        
+        if (indicadorContagem) {
+            if (ruaFinalizada) { indicadorContagem.textContent = '🔄 SEGUNDA contagem da rua ' + ruaSelecionada; indicadorContagem.style.background = 'var(--orange-light)'; indicadorContagem.style.color = 'var(--orange-dark)'; }
+            else if (contagensPendentes.length > 0) { indicadorContagem.textContent = '📝 PRIMEIRA contagem em andamento na rua ' + ruaSelecionada; indicadorContagem.style.background = 'var(--green-light)'; indicadorContagem.style.color = 'var(--green-dark)'; }
+            else { indicadorContagem.textContent = '📝 Aguardando itens para contagem da rua ' + ruaSelecionada; indicadorContagem.style.background = 'var(--accent-light)'; indicadorContagem.style.color = 'var(--accent)'; }
+        }
+        
+        if (tabelaHistoricoRua) {
+            tabelaHistoricoRua.innerHTML = '';
+            if (contagensPendentes.length === 0) { if (nenhumHistoricoRua) { nenhumHistoricoRua.textContent = 'Nenhuma contagem pendente para esta rua.'; nenhumHistoricoRua.style.display = 'block'; } }
+            else {
+                if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'none';
+                contagensPendentes.forEach(c => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = '<td>' + Utils.escapeHTML(c.rua) + '</td><td>' + Utils.escapeHTML(c.codigo) + '</td><td>' + Utils.escapeHTML(c.descricao) + '</td><td><strong>' + c.quantidade + '</strong></td>';
+                    tabelaHistoricoRua.appendChild(tr);
                 });
-                cont.synced = true;
-                cont.supabase_id = result.id;
-                state.pendingContagens = state.pendingContagens.filter(c => c.localId !== cont.localId);
-                count++;
-            } catch (err) {}
+            }
         }
-        
-        if (count > 0) {
-            saveContagens();
-            renderizarHistorico();
-            atualizarEstatisticas();
-        }
+        if (btnFinalizarRua) btnFinalizarRua.style.display = contagensPendentes.length === 0 ? 'none' : 'block';
     }
     
-    // ============ RENDERIZAÇÃO ============
-    function getHistoricoFiltrado() {
-        let lista = [...state.contagensLocal];
+    // ============ FINALIZAR ============
+    async function finalizarContagemRua() {
+        const ruaSelecionada = inputRua?.value || '';
+        if (!ruaSelecionada) { Utils.showToast('⚠️ Selecione uma rua', 'error'); return; }
+        const ruaFinalizada = state.contagensFinalizadas.find(c => c.rua === ruaSelecionada && c.contagem === 1);
+        const numeroContagem = ruaFinalizada ? 2 : 1;
+        const contagensParaFinalizar = state.contagensLocal.filter(c => c.rua === ruaSelecionada && c.contagem === numeroContagem && c.finalizada === false);
         
+        if (contagensParaFinalizar.length === 0) { Utils.showToast('⚠️ Nada para finalizar', 'error'); return; }
+        if (!confirm('Finalizar ' + numeroContagem + 'ª contagem da rua ' + ruaSelecionada + '?\nTotal: ' + contagensParaFinalizar.length + ' itens')) return;
+        
+        try {
+            if (Database.supabase && navigator.onLine) {
+                for (const c of contagensParaFinalizar) {
+                    try {
+                        const res = await Database.saveContagem({ data: c.data, rua: c.rua, codigo: c.codigo, descricao: c.descricao, embalagem: c.embalagem, quantidade: c.quantidade, contagem: numeroContagem, observacoes: c.observacoes || '', matricula: c.usuario || '', usuario: c.usuarioNome || '' });
+                        c.supabase_id = res.id; c.synced = true; c.finalizada = true;
+                    } catch (err) { throw err; }
+                }
+                state.contagensFinalizadas = [...state.contagensFinalizadas, ...contagensParaFinalizar];
+                state.contagensLocal = state.contagensLocal.filter(c => !(c.rua === ruaSelecionada && c.contagem === numeroContagem && c.finalizada === false));
+                saveContagens();
+                Utils.showToast('✅ ' + numeroContagem + 'ª contagem da rua ' + ruaSelecionada + ' finalizada!', 'success');
+            } else {
+                contagensParaFinalizar.forEach(c => { c.finalizada = true; }); saveContagens();
+                Utils.showToast('⚠️ Offline - contagem finalizada localmente', 'warning');
+            }
+            atualizarHistoricoRua(); renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
+        } catch (err) { Utils.showToast('❌ Erro: ' + err.message, 'error'); }
+    }
+    
+    // ============ RENDER ============
+    function getHistoricoFiltrado() {
+        let lista = [...state.contagensFinalizadas];
         if (filtroRua?.value.trim()) lista = lista.filter(c => c.rua.toLowerCase().includes(filtroRua.value.toLowerCase().trim()));
-        if (filtroFaixa?.value.trim()) lista = lista.filter(c => String(c.faixa).includes(filtroFaixa.value.trim()));
         if (filtroCodigo?.value.trim()) lista = lista.filter(c => c.codigo.toLowerCase().includes(filtroCodigo.value.toLowerCase().trim()));
         if (filtroDescricao?.value.trim()) lista = lista.filter(c => c.descricao.toLowerCase().includes(filtroDescricao.value.toLowerCase().trim()));
-        
-        if (state.sortColumn) {
-            lista.sort((a, b) => {
-                let va = a[state.sortColumn], vb = b[state.sortColumn];
-                if (typeof va === 'string') va = va.toLowerCase();
-                if (typeof vb === 'string') vb = vb.toLowerCase();
-                return state.sortDirection === 'asc' ? (va < vb ? -1 : 1) : (va > vb ? -1 : 1);
-            });
-        } else {
-            lista.sort((a, b) => new Date(b.dataISO || 0) - new Date(a.dataISO || 0));
-        }
-        
+        if (state.sortColumn) { lista.sort((a,b)=>{let va=a[state.sortColumn],vb=b[state.sortColumn];if(typeof va==='string')va=va.toLowerCase();if(typeof vb==='string')vb=vb.toLowerCase();return state.sortDirection==='asc'?(va<vb?-1:1):(va>vb?-1:1);}); } else { lista.sort((a,b)=>new Date(b.dataISO||0)-new Date(a.dataISO||0)); }
         return lista;
     }
     
     function renderizarHistorico() {
         if (!tabelaHistorico) return;
-        
-        const lista = getHistoricoFiltrado();
-        tabelaHistorico.innerHTML = '';
-        
-        if (lista.length === 0) {
-            if (nenhumRegistro) nenhumRegistro.style.display = 'block';
-        } else {
-            if (nenhumRegistro) nenhumRegistro.style.display = 'none';
-            
-            lista.forEach(c => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${Utils.escapeHTML(c.rua)}</td>
-                    <td>${c.faixa}</td>
-                    <td>${Utils.escapeHTML(c.codigo)} ${c.synced ? '☁️' : '📱'}</td>
-                    <td>${Utils.escapeHTML(c.descricao)}</td>
-                    <td>${Utils.escapeHTML(c.embalagem)}</td>
-                    <td><strong>${c.quantidade}</strong></td>
-                    <td>${c.data || '--'}</td>
-                    <td>${c.hora || '--'}</td>
-                    <td>
-                        <button class="btn btn-outline btn-sm btn-editar" data-id="${c.localId}">✏️</button>
-                        <button class="btn btn-danger-text btn-sm btn-excluir" data-id="${c.localId}">🗑️</button>
-                    </td>
-                `;
-                tabelaHistorico.appendChild(tr);
-            });
-            
-            tabelaHistorico.querySelectorAll('.btn-editar').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const idx = state.contagensLocal.findIndex(c => c.localId === btn.dataset.id);
-                    if (idx >= 0) editarContagem(idx);
-                });
-            });
-            
-            tabelaHistorico.querySelectorAll('.btn-excluir').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const idx = state.contagensLocal.findIndex(c => c.localId === btn.dataset.id);
-                    if (idx >= 0) excluirContagem(idx);
-                });
-            });
+        const lista = getHistoricoFiltrado(); tabelaHistorico.innerHTML = '';
+        if (!lista.length) { if (nenhumRegistro) nenhumRegistro.style.display = 'block'; }
+        else { if (nenhumRegistro) nenhumRegistro.style.display = 'none';
+            lista.forEach(c => { const tr = document.createElement('tr'); tr.innerHTML = '<td>'+Utils.escapeHTML(c.rua)+'</td><td>'+Utils.escapeHTML(c.codigo)+' ☁️</td><td>'+Utils.escapeHTML(c.descricao)+'</td><td>'+Utils.escapeHTML(c.embalagem)+'</td><td><strong>'+c.quantidade+'</strong></td><td>'+(c.data||'--')+'</td><td>'+(c.hora||'--')+'</td><td>'+Utils.escapeHTML(c.usuarioNome||c.usuario||'--')+'</td><td>'+(c.contagem||1)+'ª</td><td>✅ Finalizada</td><td><button class="btn btn-danger-text btn-sm btn-excluir" data-id="'+c.localId+'">🗑️</button></td>'; tabelaHistorico.appendChild(tr); });
+            tabelaHistorico.querySelectorAll('.btn-excluir').forEach(b=>b.addEventListener('click',async function(){const i=state.contagensFinalizadas.findIndex(c=>c.localId===this.dataset.id);if(i>=0){if(confirm('Excluir?')){const c=state.contagensFinalizadas[i];if(c.supabase_id&&Database.supabase)await Database.deleteContagem(c.supabase_id);state.contagensFinalizadas.splice(i,1);renderizarHistorico();renderizarDashboard();atualizarEstatisticas();}}}));
         }
     }
     
-    function editarContagem(index) {
-        const c = state.contagensLocal[index];
-        inputRua.value = c.rua; inputFaixa.value = c.faixa;
-        inputCodigo.value = c.codigo; inputDescricao.value = c.descricao;
-        inputEmbalagem.value = c.embalagem; inputQuantidade.value = c.quantidade;
-        inputObservacoes.value = c.observacoes || '';
-        
-        state.contagensLocal.splice(index, 1);
-        state.pendingContagens = state.pendingContagens.filter(p => p.localId !== c.localId);
-        saveContagens(); renderizarHistorico(); atualizarEstatisticas();
-        
-        document.querySelector('[data-tab="contagem"]').click();
-        Utils.showToast('Contagem carregada para edição.', 'success');
-    }
-    
-    async function excluirContagem(index) {
-        if (!confirm('Excluir?')) return;
-        const c = state.contagensLocal[index];
-        if (c.supabase_id && Database.supabase) {
-            try { await Database.deleteContagem(c.supabase_id); } catch (err) {}
-        }
-        state.contagensLocal.splice(index, 1);
-        state.pendingContagens = state.pendingContagens.filter(p => p.localId !== c.localId);
-        saveContagens(); renderizarHistorico(); atualizarEstatisticas();
-        Utils.showToast('Excluída.', 'success');
+    function renderizarDashboard() {
+        if (!tabelaDashboard) return;
+        const ruas = {}; state.contagensFinalizadas.forEach(c=>{if(!ruas[c.rua])ruas[c.rua]={itens:0,paletes:0,ultima:'',contagem:1};ruas[c.rua].itens++;ruas[c.rua].paletes+=c.quantidade;if(!ruas[c.rua].ultima||new Date(c.dataISO)>new Date(ruas[c.rua].ultima))ruas[c.rua].ultima=c.dataISO;if(c.contagem>ruas[c.rua].contagem)ruas[c.rua].contagem=c.contagem;});
+        tabelaDashboard.innerHTML = ''; const entradas = Object.entries(ruas);
+        if (!entradas.length) { if (nenhumDashboard) nenhumDashboard.style.display = 'block'; }
+        else { if (nenhumDashboard) nenhumDashboard.style.display = 'none'; entradas.forEach(([rua,dados])=>{const dh=dados.ultima?Utils.formatDataHora(dados.ultima):{data:'--',hora:'--'};const tr=document.createElement('tr');tr.innerHTML='<td><strong>'+Utils.escapeHTML(rua)+'</strong></td><td>'+dados.itens+'</td><td>'+dados.paletes+'</td><td>'+dh.data+' '+dh.hora+'</td><td>'+dados.contagem+'ª</td><td>✅</td>';tabelaDashboard.appendChild(tr);}); }
     }
     
     function atualizarEstatisticas() {
-        if (statItens) statItens.textContent = state.contagensLocal.length.toLocaleString('pt-BR');
-        if (statPaletes) statPaletes.textContent = state.contagensLocal.reduce((s, c) => s + (c.quantidade || 0), 0).toLocaleString('pt-BR');
-        if (statProdutos) statProdutos.textContent = new Set(state.contagensLocal.map(c => c.codigo)).size.toLocaleString('pt-BR');
-        if (statUltima && state.contagensLocal.length > 0) {
-            const u = state.contagensLocal[state.contagensLocal.length - 1];
-            statUltima.textContent = `${u.data || '--'} ${u.hora || '--'}`;
+        const totalGeral = state.contagensFinalizadas.length;
+        if (statItens) statItens.textContent = totalGeral.toLocaleString('pt-BR');
+        if (statPaletes) statPaletes.textContent = state.contagensFinalizadas.reduce((s,c)=>s+(c.quantidade||0),0).toLocaleString('pt-BR');
+        if (statProdutos) statProdutos.textContent = new Set(state.contagensFinalizadas.map(c=>c.codigo)).size.toLocaleString('pt-BR');
+        if (statUltima && state.contagensFinalizadas.length) { const u=state.contagensFinalizadas[state.contagensFinalizadas.length-1]; statUltima.textContent=(u.data||'--')+' '+(u.hora||'--'); }
+    }
+    
+    // ============ USUÁRIOS ============
+    async function renderizarUsuarios() {
+        if (!tabelaUsuarios) return;
+        const users = await Auth.getAllUsers(); tabelaUsuarios.innerHTML = '';
+        if (!users.length) { if (nenhumUsuario) nenhumUsuario.style.display = 'block'; }
+        else { if (nenhumUsuario) nenhumUsuario.style.display = 'none';
+            users.forEach(u=>{const tr=document.createElement('tr');const dc=u.created_at?Utils.formatDataHora(u.created_at):{data:'--',hora:'--'};tr.innerHTML='<td>'+Utils.escapeHTML(u.nome)+'</td><td>'+Utils.escapeHTML(u.usuario)+'</td><td>'+(u.role==='master'?'👑 Master':'👤 Usuário')+'</td><td>'+(u.ativo!==false?'🟢':'🔴')+'</td><td>'+dc.data+'</td><td>'+(u.usuario!=='5461448'?'<button class="btn btn-outline btn-sm btn-toggle-user" data-user="'+u.usuario+'" data-role="'+(u.role==='master'?'user':'master')+'">'+(u.role==='master'?'⬇':'⬆')+'</button> <button class="btn btn-danger-text btn-sm btn-delete-user" data-user="'+u.usuario+'">🗑️</button>':'Admin')+'</td>';tabelaUsuarios.appendChild(tr);});
+            tabelaUsuarios.querySelectorAll('.btn-toggle-user').forEach(b=>b.addEventListener('click',async function(){await Auth.updateUser(this.dataset.user,{role:this.dataset.role});renderizarUsuarios();}));
+            tabelaUsuarios.querySelectorAll('.btn-delete-user').forEach(b=>b.addEventListener('click',async function(){await Auth.deleteUser(this.dataset.user);renderizarUsuarios();}));
         }
     }
     
     // ============ EVENTOS ============
-    
-    // Menu
-    hamburgerBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        menuDropdown.classList.toggle('show');
-    });
-    document.addEventListener('click', () => menuDropdown.classList.remove('show'));
-    menuDropdown.addEventListener('click', (e) => e.stopPropagation());
-    
-    $('#menuDarkMode').addEventListener('click', () => {
-        document.body.classList.toggle('dark-mode');
-        const isDark = document.body.classList.contains('dark-mode');
-        localStorage.setItem('blmez_darkmode', isDark ? '1' : '0');
-        $('#menuDarkMode').textContent = isDark ? '☀️ Modo Claro' : '🌓 Modo Escuro';
-        menuDropdown.classList.remove('show');
-    });
-    
-    $('#menuSync').addEventListener('click', async () => {
-        menuDropdown.classList.remove('show');
-        await syncPendingContagens();
-        Utils.showToast('Sincronizado!', 'success');
-    });
-    
-    $('#menuBackup').addEventListener('click', () => {
-        menuDropdown.classList.remove('show');
-        if (!state.contagensLocal.length) { Utils.showToast('Nenhum dado.', 'error'); return; }
-        const blob = new Blob([JSON.stringify(state.contagensLocal, null, 2)], { type: 'application/json' });
-        Utils.downloadBlob(blob, `backup_${new Date().toISOString().slice(0,10)}.json`);
-        Utils.showToast('Backup OK!', 'success');
-    });
-    
-    $('#menuRestore').addEventListener('click', () => {
-        menuDropdown.classList.remove('show');
-        $('#restoreFileInput').click();
-    });
-    
-    $('#restoreFileInput').addEventListener('change', (e) => {
-        if (!e.target.files[0]) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            try {
-                const dados = JSON.parse(ev.target.result);
-                if (!Array.isArray(dados)) throw new Error('Inválido');
-                if (confirm(`Restaurar ${dados.length} registros?`)) {
-                    state.contagensLocal = dados;
-                    state.pendingContagens = dados.filter(c => !c.synced);
-                    saveContagens(); renderizarHistorico(); atualizarEstatisticas();
-                    Utils.showToast('✅ Restaurado!', 'success');
-                }
-            } catch (err) { Utils.showToast('Arquivo inválido.', 'error'); }
-        };
-        reader.readAsText(e.target.files[0]);
-        e.target.value = '';
-    });
-    
-    $('#menuLogout').addEventListener('click', () => {
-        if (confirm('Sair?')) Auth.logout();
-    });
-    
-    // Abas
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            const tab = document.getElementById('tab' + btn.dataset.tab.charAt(0).toUpperCase() + btn.dataset.tab.slice(1));
-            if (tab) tab.classList.add('active');
-            if (btn.dataset.tab === 'historico') renderizarHistorico();
-            if (btn.dataset.tab === 'base') atualizarBaseInfo();
-        });
-    });
-    
-    // Importação Master
-    if (importZoneMaster) {
-        importZoneMaster.addEventListener('click', () => fileInputMaster.click());
-        
-        fileInputMaster.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async (ev) => await importarBaseMaster(ev.target.result, file.name);
-            reader.readAsText(file);
-            fileInputMaster.value = '';
-        });
-        
-        importZoneMaster.addEventListener('dragover', (e) => { e.preventDefault(); importZoneMaster.classList.add('drag-over'); });
-        importZoneMaster.addEventListener('dragleave', () => importZoneMaster.classList.remove('drag-over'));
-        importZoneMaster.addEventListener('drop', async (e) => {
-            e.preventDefault();
-            importZoneMaster.classList.remove('drag-over');
-            const file = e.dataTransfer.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async (ev) => await importarBaseMaster(ev.target.result, file.name);
-            reader.readAsText(file);
-        });
-    }
-    
-    $('#btnRecarregarBase')?.addEventListener('click', async () => {
-        await carregarBaseDoSupabase();
-    });
-    
-    // Pesquisa
-    function pesquisarEAtualizar(codigo) {
-        if (!codigo?.trim()) {
-            inputDescricao.value = '';
-            inputEmbalagem.value = '';
-            return;
-        }
-        
-        if (state.produtosMapCodAcesso.size === 0) {
-            Utils.showToast('⚠️ Base vazia!', 'error');
-            return;
-        }
-        
-        const produto = pesquisarProduto(codigo);
-        
-        if (produto) {
-            inputDescricao.value = produto.descCompleta;
-            inputEmbalagem.value = produto.embalagemFormatada;
-            inputCodigo.classList.add('input-success');
-            setTimeout(() => inputCodigo.classList.remove('input-success'), 1500);
-            Utils.playBeep(); Utils.vibrate(40);
-        } else {
-            inputDescricao.value = '';
-            inputEmbalagem.value = '';
-            inputCodigo.classList.add('input-error');
-            setTimeout(() => inputCodigo.classList.remove('input-error'), 1500);
-            Utils.showToast('❌ Não encontrado.', 'error');
-        }
-    }
-    
-    inputCodigo.addEventListener('change', () => pesquisarEAtualizar(inputCodigo.value));
-    inputCodigo.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            pesquisarEAtualizar(inputCodigo.value);
-            if (inputDescricao.value) { inputQuantidade.focus(); inputQuantidade.select(); }
-        }
-    });
-    
-    // Salvar
-    btnSalvar.addEventListener('click', async () => {
-        const rua = inputRua.value.trim();
-        const faixa = parseInt(inputFaixa.value) || 0;
-        const codigo = inputCodigo.value.trim();
-        const descricao = inputDescricao.value.trim();
-        const embalagem = inputEmbalagem.value.trim();
-        const quantidade = parseInt(inputQuantidade.value) || 0;
-        const observacoes = inputObservacoes.value.trim();
-        
-        if (!rua) { Utils.showToast('⚠️ Rua', 'error'); return; }
-        if (!faixa) { Utils.showToast('⚠️ Faixa', 'error'); return; }
-        if (!codigo) { Utils.showToast('⚠️ Código', 'error'); return; }
-        if (!descricao) { Utils.showToast('⚠️ Produto não encontrado', 'error'); return; }
-        if (quantidade <= 0) { Utils.showToast('⚠️ Quantidade', 'error'); return; }
-        
-        const dh = Utils.formatDataHora(new Date());
-        const contagem = {
-            localId: Utils.generateId(), rua, faixa, codigo, descricao, embalagem,
-            quantidade, observacoes, data: dh.data, hora: dh.hora, dataISO: dh.iso,
-            synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome
-        };
-        
-        const resultado = await salvarContagem(contagem);
-        
-        if (resultado !== 'cancelar') {
-            Utils.showToast('✅ Salvo!', 'success');
-            inputRua.value = ''; inputFaixa.value = ''; inputCodigo.value = '';
-            inputDescricao.value = ''; inputEmbalagem.value = '';
-            inputQuantidade.value = '1'; inputObservacoes.value = '';
-            inputCodigo.classList.remove('input-success', 'input-error');
-            inputRua.focus();
-        }
-        
-        renderizarHistorico(); atualizarEstatisticas();
-    });
-    
-    btnNovaContagem.addEventListener('click', () => {
-        inputRua.value = ''; inputFaixa.value = ''; inputCodigo.value = '';
-        inputDescricao.value = ''; inputEmbalagem.value = '';
-        inputQuantidade.value = '1'; inputObservacoes.value = '';
-        inputRua.focus();
-    });
-    
-    // Câmera
-    btnCamera.addEventListener('click', () => {
-        if (Camera.isOpen) { Camera.close(); modalCamera.style.display = 'none'; }
-        else {
-            modalCamera.style.display = 'flex';
-            Camera.open(cameraVideo, (codigo) => {
-                inputCodigo.value = codigo;
-                pesquisarEAtualizar(codigo);
-                if (!Camera.continuousMode) modalCamera.style.display = 'none';
+    function setupEventListeners() {
+        try {
+            if (hamburgerBtn) hamburgerBtn.addEventListener('click', abrirSidebar);
+            if (sidebarClose) sidebarClose.addEventListener('click', fecharSidebar);
+            if (sidebarOverlay) sidebarOverlay.addEventListener('click', fecharSidebar);
+            $$('.sidebar-item[data-section]').forEach(item => item.addEventListener('click', () => abrirSecao(item.dataset.section)));
+            
+            const darkBtn = $('#menuDarkMode');
+            if (darkBtn) darkBtn.addEventListener('click', () => { document.body.classList.toggle('dark-mode'); localStorage.setItem('blmez_darkmode', document.body.classList.contains('dark-mode')?'1':'0'); darkBtn.textContent = document.body.classList.contains('dark-mode')?'☀️ Modo Claro':'🌓 Modo Escuro'; });
+            
+            $('#menuSync')?.addEventListener('click', async () => { await syncFromSupabase(); Utils.showToast('✅ Sincronizado!','success'); });
+            $('#menuBackup')?.addEventListener('click', () => { const dados = [...state.contagensLocal, ...state.contagensFinalizadas]; if (!dados.length) return; Utils.downloadBlob(new Blob([JSON.stringify(dados)],{type:'application/json'}),'backup_'+new Date().toISOString().slice(0,10)+'.json'); });
+            $('#menuRestore')?.addEventListener('click', () => restoreFileInput?.click());
+            if (restoreFileInput) restoreFileInput.addEventListener('change', (e) => { if(!e.target.files[0])return; const r=new FileReader(); r.onload=(ev)=>{try{const d=JSON.parse(ev.target.result);state.contagensLocal=d.filter(c=>!c.finalizada);state.contagensFinalizadas=d.filter(c=>c.finalizada);saveContagens();renderizarHistorico();renderizarDashboard();atualizarEstatisticas();atualizarHistoricoRua();}catch(ex){}}; r.readAsText(e.target.files[0]); e.target.value=''; });
+            $('#menuLogout')?.addEventListener('click', () => { if (confirm('Sair?')) Auth.logout(); });
+            
+            if (btnAddUser) btnAddUser.addEventListener('click', () => { const n=novoNome?.value.trim(),u=novoUsuario?.value.trim(),s=novaSenha?.value,r=novoRole?.value; if(!n||!u||!s)return; if(!/^\d+$/.test(u)){Utils.showToast('⚠️ Matrícula apenas números','error');return;} const res=Auth.cadastrar(n,u,s); if(res.sucesso){if(r==='master')Auth.updateUser(u,{role:'master'});if(novoNome)novoNome.value='';if(novoUsuario)novoUsuario.value='';if(novaSenha)novaSenha.value='';renderizarUsuarios();}else{Utils.showToast('❌ '+res.mensagem,'error');} });
+            
+            if (importZoneMaster && fileInputMaster) {
+                importZoneMaster.addEventListener('click', () => fileInputMaster.click());
+                fileInputMaster.addEventListener('change', async (e) => { const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=async(ev)=>await importarBaseMaster(ev.target.result,f.name); r.readAsText(f); fileInputMaster.value=''; });
+                importZoneMaster.addEventListener('dragover', (e) => { e.preventDefault(); importZoneMaster.classList.add('drag-over'); });
+                importZoneMaster.addEventListener('dragleave', () => importZoneMaster.classList.remove('drag-over'));
+                importZoneMaster.addEventListener('drop', async (e) => { e.preventDefault(); importZoneMaster.classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(!f)return; const r=new FileReader(); r.onload=async(ev)=>await importarBaseMaster(ev.target.result,f.name); r.readAsText(f); });
+            }
+            if(btnRecarregarBase) btnRecarregarBase.addEventListener('click', carregarBaseDoSupabase);
+            
+            if (inputRua) inputRua.addEventListener('change', atualizarHistoricoRua);
+            if (btnFinalizarRua) btnFinalizarRua.addEventListener('click', finalizarContagemRua);
+            
+            if (inputCodigo) {
+                inputCodigo.addEventListener('input', function() { this.classList.remove('input-success','input-error'); });
+                inputCodigo.addEventListener('change', function() { processarCodigo(this.value); });
+                inputCodigo.addEventListener('keydown', function(e) { if(e.key==='Enter'){e.preventDefault();processarCodigo(this.value);if(inputDescricao?.value&&inputQuantidade){setTimeout(()=>{inputQuantidade.focus();inputQuantidade.select();},200);}} });
+            }
+            
+            if(btnSalvar) btnSalvar.addEventListener('click', () => {
+                if (state.salvandoContagem) return;
+                const rua = inputRua?.value || '';
+                const codigo = inputCodigo?.value.trim() || '';
+                const desc = inputDescricao?.value.trim() || '';
+                const emb = inputEmbalagem?.value.trim() || '';
+                const qtd = parseInt(inputQuantidade?.value) || 0;
+                const obs = inputObservacoes?.value.trim() || '';
+                if (!rua || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos','error'); return; }
+                if (!/^\d+$/.test(codigo)) { Utils.showToast('⚠️ Código apenas números','error'); return; }
+                state.salvandoContagem = true;
+                const dh = Utils.formatDataHora(new Date());
+                const contagem = { localId: Utils.generateId(), rua, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome, contagem: 1, finalizada: false };
+                salvarContagem(contagem).then(res => {
+                    if (res !== 'cancelar') {
+                        Utils.showToast('✅ Salvo!','success');
+                        if (inputRua?.value) localStorage.setItem(ULTIMA_RUA_KEY, inputRua.value);
+                        const ruaSalva = inputRua?.value || '';
+                        if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
+                        if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
+                        if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
+                        if (inputRua) inputRua.value = ruaSalva; if (inputCodigo) inputCodigo.focus();
+                        atualizarHistoricoRua();
+                    }
+                    state.salvandoContagem = false;
+                });
             });
+            
+            if(btnNovaContagem) btnNovaContagem.addEventListener('click', () => {
+                const ruaAtual = inputRua?.value || '';
+                if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
+                if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
+                if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
+                if (inputRua) inputRua.value = ruaAtual; if (inputCodigo) inputCodigo.focus();
+                atualizarHistoricoRua();
+            });
+            
+            if(btnCamera) btnCamera.addEventListener('click', () => { if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; } else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigoLido) => { if (inputCodigo) inputCodigo.value = codigoLido; processarCodigo(codigoLido); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); } });
+            if(btnFecharCamera) btnFecharCamera.addEventListener('click', () => { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; });
+            if(btnCameraContinuo) btnCameraContinuo.addEventListener('click', () => { const cont = Camera.toggleContinuous(); if (modoCameraLabel) modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO'; });
+            
+            $('#btnEditarExistente')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar'); });
+            $('#btnSomarQuantidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar'); });
+            $('#btnCancelarDuplicidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; state.resolvendoDuplicidade = null; });
+            
+            if(btnExportCSV) btnExportCSV.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Matrícula:c.usuario||'',Usuário:c.usuarioNome||'',Contagem:(c.contagem||1)+'ª',Status:'Finalizada'})); if(!dados.length)return; const cab=Object.keys(dados[0]).join(';'); Utils.downloadBlob(new Blob(['\uFEFF'+[cab,...dados.map(d=>Object.values(d).map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';'))].join('\n')],{type:'text/csv;charset=utf-8;'}),'contagem_'+new Date().toISOString().slice(0,10)+'.csv'); });
+            if(btnExportExcel) btnExportExcel.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Matrícula:c.usuario||'',Usuário:c.usuarioNome||'',Contagem:(c.contagem||1)+'ª',Status:'Finalizada'})); if(!dados.length)return; const ws=XLSX.utils.json_to_sheet(dados);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Contagens');XLSX.writeFile(wb,'contagem_'+new Date().toISOString().slice(0,10)+'.xlsx'); });
+            
+            [filtroRua,filtroCodigo,filtroDescricao].forEach(i=>i?.addEventListener('input',renderizarHistorico));
+            $$('thead th[data-sort]').forEach(th=>th.addEventListener('click',()=>{const col=th.dataset.sort;state.sortDirection=state.sortColumn===col?(state.sortDirection==='asc'?'desc':'asc'):'asc';state.sortColumn=col;renderizarHistorico();}));
+            
+            document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&Camera.isOpen){Camera.close();if(modalCamera)modalCamera.style.display='none';}if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();btnSalvar?.click();}});
+            window.addEventListener('online',async()=>{state.dbConnected=true;updateConnectionDot();});
+            window.addEventListener('offline',()=>{state.dbConnected=false;updateConnectionDot();});
+            
+        } catch(err) {
+            console.error('Erro ao adicionar eventos:', err);
         }
-    });
-    
-    btnFecharCamera.addEventListener('click', () => { Camera.close(); modalCamera.style.display = 'none'; });
-    
-    btnCameraContinuo.addEventListener('click', () => {
-        const isCont = Camera.toggleContinuous();
-        modoCameraLabel.textContent = isCont ? 'LIGADO' : 'DESLIGADO';
-    });
-    
-    // Duplicidade
-    $('#btnEditarExistente').addEventListener('click', () => {
-        modalDuplicidade.style.display = 'none';
-        if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar');
-        renderizarHistorico(); atualizarEstatisticas();
-    });
-    
-    $('#btnSomarQuantidade').addEventListener('click', () => {
-        modalDuplicidade.style.display = 'none';
-        if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar');
-        renderizarHistorico(); atualizarEstatisticas();
-    });
-    
-    $('#btnCancelarDuplicidade').addEventListener('click', () => {
-        modalDuplicidade.style.display = 'none';
-        state.resolvendoDuplicidade = null;
-    });
-    
-    // Exportação
-    function getDadosExportacao() {
-        return getHistoricoFiltrado().map(c => ({
-            Rua: c.rua, Faixa: c.faixa, Código: c.codigo, Descrição: c.descricao,
-            Embalagem: c.embalagem, Quantidade: c.quantidade,
-            Data: c.data || '', Hora: c.hora || '', Observações: c.observacoes || ''
-        }));
     }
     
-    $('#btnExportCSV').addEventListener('click', () => {
-        if (!isMaster) { Utils.showToast('Acesso restrito.', 'error'); return; }
-        const dados = getDadosExportacao();
-        if (!dados.length) { Utils.showToast('Nenhum dado.', 'error'); return; }
-        const cab = ['Rua','Faixa','Código','Descrição','Embalagem','Quantidade','Data','Hora','Observações'];
-        const linhas = [cab.join(';')];
-        dados.forEach(d => linhas.push(Object.values(d).map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')));
-        Utils.downloadBlob(new Blob(['\uFEFF' + linhas.join('\n')], { type: 'text/csv;charset=utf-8;' }), `contagem_${new Date().toISOString().slice(0,10)}.csv`);
-        Utils.showToast('CSV exportado!', 'success');
-    });
-    
-    $('#btnExportExcel').addEventListener('click', () => {
-        if (!isMaster) { Utils.showToast('Acesso restrito.', 'error'); return; }
-        const dados = getDadosExportacao();
-        if (!dados.length) { Utils.showToast('Nenhum dado.', 'error'); return; }
-        const ws = XLSX.utils.json_to_sheet(dados);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Contagens');
-        XLSX.writeFile(wb, `contagem_${new Date().toISOString().slice(0,10)}.xlsx`);
-        Utils.showToast('Excel exportado!', 'success');
-    });
-    
-    // Filtros
-    [filtroRua, filtroFaixa, filtroCodigo, filtroDescricao].forEach(input => {
-        if (input) input.addEventListener('input', renderizarHistorico);
-    });
-    
-    // Ordenação
-    $$('thead th[data-sort]').forEach(th => {
-        th.addEventListener('click', () => {
-            const col = th.dataset.sort;
-            state.sortDirection = state.sortColumn === col ? (state.sortDirection === 'asc' ? 'desc' : 'asc') : 'asc';
-            state.sortColumn = col;
-            renderizarHistorico();
-        });
-    });
-    
-    // Atalhos
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            if (Camera.isOpen) { Camera.close(); modalCamera.style.display = 'none'; }
-        }
-        if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); btnSalvar.click(); }
-        if (e.key === 'Enter' && document.activeElement === inputQuantidade) { e.preventDefault(); btnSalvar.click(); }
-    });
-    
-    // Online/Offline
-    window.addEventListener('online', async () => {
-        Utils.showToast('🌐 Online!', 'success');
-        if (Database.supabase) {
-            await syncPendingContagens();
-            if (state.produtosMapCodAcesso.size === 0) await carregarBaseDoSupabase();
-        }
-    });
-    
-    window.addEventListener('offline', () => Utils.showToast('📱 Offline', 'warning'));
-    
-    // ============ INICIAR ============
     init();
-    
 })();
