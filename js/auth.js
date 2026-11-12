@@ -7,7 +7,7 @@ const Auth = {
     LOCAL_USERS_KEY: 'blmez_users',
     
     MASTER_USER: {
-        nome: 'Michel Marcelo',
+        nome: 'Mitchell',
         usuario: '5461448',
         senha: '5461448',
         role: 'master',
