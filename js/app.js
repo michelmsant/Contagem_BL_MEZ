@@ -10,80 +10,24 @@
     
     const ULTIMA_RUA_KEY = 'blmez_ultima_rua';
     
-    // ============ ELEMENTOS DA TELA ============
-    const hamburgerBtn = $('#hamburgerBtn');
-    const sidebar = $('#sidebar');
-    const sidebarOverlay = $('#sidebarOverlay');
-    const sidebarClose = $('#sidebarClose');
-    const menuBase = $('#menuBase');
-    const menuHistorico = $('#menuHistorico');
-    const menuUsuarios = $('#menuUsuarios');
+    // Elementos
     const userNameDisplay = $('#userNameDisplay');
     const masterBadge = $('#masterBadge');
     const connectionDot = $('#connectionDot');
-    const importInfo = $('#importInfo');
     const inputRua = $('#rua');
     const inputCodigo = $('#codigo');
     const inputDescricao = $('#descricao');
     const inputEmbalagem = $('#embalagem');
     const inputQuantidade = $('#quantidade');
     const inputObservacoes = $('#observacoes');
-    const btnSalvar = $('#btnSalvar');
-    const btnNovaContagem = $('#btnNovaContagem');
-    const btnCamera = $('#btnCamera');
-    const statItens = $('#statItens');
-    const statPaletes = $('#statPaletes');
-    const statProdutos = $('#statProdutos');
-    const statUltima = $('#statUltima');
-    const tabelaHistorico = $('#tabelaHistorico');
-    const nenhumRegistro = $('#nenhumRegistro');
-    const tabelaDashboard = $('#tabelaDashboard');
-    const nenhumDashboard = $('#nenhumDashboard');
-    const filtroRua = $('#filtroRua');
-    const filtroCodigo = $('#filtroCodigo');
-    const filtroDescricao = $('#filtroDescricao');
-    const modalDuplicidade = $('#modalDuplicidade');
-    const msgDuplicidade = $('#msgDuplicidade');
-    const modalCamera = $('#modalCamera');
-    const cameraVideo = $('#cameraVideo');
-    const btnFecharCamera = $('#btnFecharCamera');
-    const btnCameraContinuo = $('#btnCameraContinuo');
-    const modoCameraLabel = $('#modoCameraLabel');
-    const importZoneMaster = $('#importZoneMaster');
-    const fileInputMaster = $('#fileInputMaster');
-    const progressBarMaster = $('#progressBarMaster');
-    const progressFillMaster = $('#progressFillMaster');
-    const importStatusMaster = $('#importStatusMaster');
-    const baseInfo = $('#baseInfo');
-    const btnRecarregarBase = $('#btnRecarregarBase');
-    const restoreFileInput = $('#restoreFileInput');
-    const btnExportCSV = $('#btnExportCSV');
-    const btnExportExcel = $('#btnExportExcel');
-    const tabelaUsuarios = $('#tabelaUsuarios');
-    const nenhumUsuario = $('#nenhumUsuario');
-    const btnAddUser = $('#btnAddUser');
-    const novoNome = $('#novoNome');
-    const novoUsuario = $('#novoUsuario');
-    const novaSenha = $('#novaSenha');
-    const novoRole = $('#novoRole');
-    const tabelaHistoricoRua = $('#tabelaHistoricoRua');
-    const nenhumHistoricoRua = $('#nenhumHistoricoRua');
-    const cardHistoricoRua = $('#cardHistoricoRua');
-    const ruaAtualHistorico = $('#ruaAtualHistorico');
-    const indicadorContagem = $('#indicadorContagem');
-    const btnFinalizarRua = $('#btnFinalizarRua');
     
-    // ============ ESTADO ============
     const state = {
         produtosMapCodAcesso: new Map(),
         produtosMapSeqProduto: new Map(),
         baseMeta: null,
-        contagensLocal: [],       // Contagens pendentes (ainda não finalizadas)
-        contagensFinalizadas: [], // Contagens que já foram para o Supabase
-        sortColumn: null,
-        sortDirection: 'asc',
+        contagensLocal: [],      
+        contagensFinalizadas: [], 
         resolvendoDuplicidade: null,
-        dbConnected: false,
         salvandoContagem: false
     };
     
@@ -94,9 +38,9 @@
             
             if (isMaster) {
                 if (masterBadge) masterBadge.style.display = 'inline';
-                if (menuBase) menuBase.style.display = 'block';
-                if (menuHistorico) menuHistorico.style.display = 'block';
-                if (menuUsuarios) menuUsuarios.style.display = 'block';
+                if ($('#menuBase')) $('#menuBase').style.display = 'block';
+                if ($('#menuHistorico')) $('#menuHistorico').style.display = 'block';
+                if ($('#menuUsuarios')) $('#menuUsuarios').style.display = 'block';
             }
             
             loadContagens();
@@ -113,37 +57,41 @@
                 if (darkBtn) darkBtn.textContent = '☀️ Modo Claro';
             }
             
-            setupEventListeners();
-            abrirSecao('contagem');
+            // Renderiza a interface IMEDIATAMENTE (sem esperar banco)
+            atualizarHistoricoRua();
+            renderizarHistorico();
+            renderizarDashboard();
+            atualizarEstatisticas();
+            atualizarInfoImportacao();
             
-            // Tenta carregar o banco em segundo plano para a tela abrir rápido
-            setTimeout(async () => {
-                const dbOk = Database.init();
-                state.dbConnected = dbOk;
-                updateConnectionDot();
-                
-                if (dbOk) {
-                    const testOk = await Database.testConnection();
-                    state.dbConnected = testOk;
-                    updateConnectionDot();
-                    if (testOk) {
-                        await carregarBaseDoSupabase();
-                        await syncFromSupabase();
-                    }
-                }
-                atualizarHistoricoRua();
-                renderizarHistorico();
-                renderizarDashboard();
-                atualizarEstatisticas();
-            }, 100);
+            setupEventListeners();
+            if (typeof abrirSecao === 'function') abrirSecao('contagem');
 
         } catch (err) {
             console.error('❌ Erro na inicialização:', err);
         }
-    }
-    
-    function updateConnectionDot() {
-        if (connectionDot) connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
+        
+        // Banco de dados em segundo plano (não trava a tela)
+        try {
+            const dbOk = Database.init();
+            state.dbConnected = dbOk;
+            if (connectionDot) connectionDot.textContent = dbOk ? '🟢' : '🔴';
+            
+            if (dbOk) {
+                const testOk = await Database.testConnection();
+                state.dbConnected = testOk;
+                if (connectionDot) connectionDot.textContent = testOk ? '🟢' : '🔴';
+                
+                if (testOk) {
+                    await carregarBaseDoSupabase();
+                    await syncFromSupabase();
+                    atualizarHistoricoRua();
+                    renderizarHistorico();
+                    renderizarDashboard();
+                    atualizarEstatisticas();
+                }
+            }
+        } catch(e) {}
     }
     
     async function syncFromSupabase() {
@@ -154,38 +102,7 @@
                 state.contagensFinalizadas = remotas.map(c => ({
                     localId: 'remote_' + c.id, supabase_id: c.id, data: c.data, rua: c.rua, codigo: c.codigo, descricao: c.descricao, embalagem: c.embalagem, quantidade: c.quantidade, contagem: c.contagem || 1, observacoes: c.observacoes || '', usuario: c.matricula || '', usuarioNome: c.usuario || '', dataISO: c.created_at, finalizada: true, synced: true
                 }));
-                renderizarHistorico(); renderizarDashboard(); atualizarEstatisticas();
             }
-        } catch (err) {}
-    }
-    
-    // ============ SIDEBAR ============
-    function abrirSidebar() { if (sidebar) sidebar.classList.add('open'); if (sidebarOverlay) sidebarOverlay.classList.add('open'); }
-    function fecharSidebar() { if (sidebar) sidebar.classList.remove('open'); if (sidebarOverlay) sidebarOverlay.classList.remove('open'); }
-    
-    function abrirSecao(nome) {
-        try {
-            ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.classList.remove('active');
-            });
-            const mapa = { contagem: 'secaoContagem', base: 'secaoBase', historico: 'secaoHistorico', dashboard: 'secaoDashboard', usuarios: 'secaoUsuarios' };
-            const secao = document.getElementById(mapa[nome]);
-            if (secao) secao.classList.add('active');
-            
-            $$('.sidebar-item[data-section]').forEach(item => {
-                item.classList.remove('active');
-                if (item.dataset.section === nome) item.classList.add('active');
-            });
-            
-            setTimeout(() => {
-                if (nome === 'historico') renderizarHistorico();
-                if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
-                if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
-                if (nome === 'usuarios') renderizarUsuarios();
-                if (nome === 'contagem') atualizarHistoricoRua();
-            }, 100);
-            fecharSidebar();
         } catch (err) {}
     }
     
@@ -213,45 +130,15 @@
         }
     }
     
-    async function importarBaseMaster(conteudo, nomeArquivo) {
-        if (!Database.supabase) { Utils.showToast('❌ Offline', 'error'); return; }
-        if(progressBarMaster) progressBarMaster.classList.add('active');
-        try {
-            const linhas = conteudo.split(/\r?\n/).filter(l => l.trim());
-            if (!linhas.length) throw new Error('Vazio');
-            const delimitadores = ['\t', ';', ','];
-            let del = '\t', max = 0;
-            delimitadores.forEach(d => { const c = linhas[0].split(d).length; if (c > max) { max = c; del = d; } });
-            const cab = linhas[0].split(del);
-            const inicio = cab.some(c => /seqproduto|codacesso/i.test(c)) ? 1 : 0;
-            if (cab.length < 9) throw new Error('9 colunas necessárias');
-            const arr = [];
-            for (let i = inicio; i < linhas.length; i++) {
-                const cols = linhas[i].split(del);
-                if (cols.length < 9) continue;
-                arr.push({ seqproduto: (cols[1]||'').trim(), desccompleta: (cols[2]||'').trim(), codacesso: (cols[3]||'').trim(), embalagem: (cols[7]||'').trim(), qtdembalagem: (cols[8]||'').trim() });
-            }
-            await Database.replaceProdutos(arr, (p) => { if(progressFillMaster) progressFillMaster.style.width = p + '%'; });
-            construirIndices(arr.map(p => ({ seqproduto: p.seqproduto, desccompleta: p.desccompleta, codacesso: p.codacesso, embalagem: p.embalagem, qtdembalagem: p.qtdembalagem })));
-            state.baseMeta = { nomeArquivo, totalRegistros: state.produtosMapCodAcesso.size, dataHoraImportacao: new Date().toISOString() };
-            Database.saveBaseMeta(state.baseMeta);
-            atualizarInfoImportacao(); atualizarBaseInfo();
-            if(importStatusMaster) importStatusMaster.innerHTML = '<span style="color:green">✅ ' + state.produtosMapCodAcesso.size + ' produtos</span>';
-        } catch (err) {
-            if(importStatusMaster) importStatusMaster.innerHTML = '<span style="color:red">❌ ' + Utils.escapeHTML(err.message) + '</span>';
-        } finally {
-            if(progressBarMaster) progressBarMaster.classList.remove('active');
-        }
-    }
-    
     function atualizarInfoImportacao() {
+        const importInfo = $('#importInfo');
         if (!importInfo) return;
         if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) { importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada.</span>'; return; }
         const dh = Utils.formatDataHora(state.baseMeta.dataHoraImportacao);
         importInfo.innerHTML = '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span> <span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span> <span>📅 ' + dh.data + ' ' + dh.hora + '</span>';
     }
     
-    function atualizarBaseInfo() { if (baseInfo) baseInfo.textContent = state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' produtos na base'; }
+    function atualizarBaseInfo() { const baseInfo = $('#baseInfo'); if (baseInfo) baseInfo.textContent = state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' produtos na base'; }
     
     // ============ PESQUISA ============
     function pesquisarProduto(codigo) {
@@ -260,7 +147,6 @@
         if (state.produtosMapCodAcesso.has(c)) return state.produtosMapCodAcesso.get(c);
         if (state.produtosMapSeqProduto.has(c)) return state.produtosMapSeqProduto.get(c);
         for (const [k, v] of state.produtosMapCodAcesso) if (k.startsWith(c)) return v;
-        for (const [k, v] of state.produtosMapSeqProduto) if (k.startsWith(c)) return v;
         return null;
     }
     
@@ -282,9 +168,7 @@
     
     // ============ CONTAGENS ============
     function loadContagens() {
-        try {
-            state.contagensLocal = JSON.parse(localStorage.getItem(Database.KEYS.CONTAGENS) || '[]');
-        } catch (e) { state.contagensLocal = []; }
+        try { state.contagensLocal = JSON.parse(localStorage.getItem(Database.KEYS.CONTAGENS) || '[]'); } catch (e) { state.contagensLocal = []; }
     }
     
     function saveContagens() {
@@ -315,8 +199,10 @@
                     } else { resolve(op); return; }
                     saveContagens(); atualizarHistoricoRua(); resolve(op);
                 };
-                if(msgDuplicidade) msgDuplicidade.innerHTML = '<strong>' + Utils.escapeHTML(state.contagensLocal[idx].rua) + '</strong><br>Código: ' + Utils.escapeHTML(state.contagensLocal[idx].codigo) + '<br>Contagem: ' + numeroContagemAtual + 'ª<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Somar: ' + contagem.quantidade;
-                if(modalDuplicidade) modalDuplicidade.style.display = 'flex';
+                const msgDup = $('#msgDuplicidade');
+                const modDup = $('#modalDuplicidade');
+                if(msgDup) msgDup.innerHTML = '<strong>' + Utils.escapeHTML(state.contagensLocal[idx].rua) + '</strong><br>Código: ' + Utils.escapeHTML(state.contagensLocal[idx].codigo) + '<br>Contagem: ' + numeroContagemAtual + 'ª<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Somar: ' + contagem.quantidade;
+                if(modDup) modDup.style.display = 'flex';
             });
         }
         state.contagensLocal.push(contagem); saveContagens(); atualizarHistoricoRua(); return 'novo';
@@ -325,6 +211,13 @@
     // ============ HISTÓRICO DA RUA ============
     function atualizarHistoricoRua() {
         const ruaSelecionada = inputRua?.value || '';
+        const cardHistoricoRua = $('#cardHistoricoRua');
+        const ruaAtualHistorico = $('#ruaAtualHistorico');
+        const indicadorContagem = $('#indicadorContagem');
+        const tabelaHistoricoRua = $('#tabelaHistoricoRua');
+        const nenhumHistoricoRua = $('#nenhumHistoricoRua');
+        const btnFinalizarRua = $('#btnFinalizarRua');
+        
         if (!ruaSelecionada) { if (cardHistoricoRua) cardHistoricoRua.style.display = 'none'; return; }
         if (cardHistoricoRua) cardHistoricoRua.style.display = 'block';
         if (ruaAtualHistorico) ruaAtualHistorico.textContent = ruaSelecionada;
@@ -386,16 +279,23 @@
     
     // ============ RENDER ============
     function getHistoricoFiltrado() {
+        const filtroRua = $('#filtroRua');
+        const filtroCodigo = $('#filtroCodigo');
+        const filtroDescricao = $('#filtroDescricao');
+        
         let lista = [...state.contagensFinalizadas];
         if (filtroRua?.value.trim()) lista = lista.filter(c => c.rua.toLowerCase().includes(filtroRua.value.toLowerCase().trim()));
         if (filtroCodigo?.value.trim()) lista = lista.filter(c => c.codigo.toLowerCase().includes(filtroCodigo.value.toLowerCase().trim()));
         if (filtroDescricao?.value.trim()) lista = lista.filter(c => c.descricao.toLowerCase().includes(filtroDescricao.value.toLowerCase().trim()));
-        if (state.sortColumn) { lista.sort((a,b)=>{let va=a[state.sortColumn],vb=b[state.sortColumn];if(typeof va==='string')va=va.toLowerCase();if(typeof vb==='string')vb=vb.toLowerCase();return state.sortDirection==='asc'?(va<vb?-1:1):(va>vb?-1:1);}); } else { lista.sort((a,b)=>new Date(b.dataISO||0)-new Date(a.dataISO||0)); }
+        lista.sort((a,b)=>new Date(b.dataISO||0)-new Date(a.dataISO||0));
         return lista;
     }
     
     function renderizarHistorico() {
+        const tabelaHistorico = $('#tabelaHistorico');
+        const nenhumRegistro = $('#nenhumRegistro');
         if (!tabelaHistorico) return;
+        
         const lista = getHistoricoFiltrado(); tabelaHistorico.innerHTML = '';
         if (!lista.length) { if (nenhumRegistro) nenhumRegistro.style.display = 'block'; }
         else { if (nenhumRegistro) nenhumRegistro.style.display = 'none';
@@ -405,7 +305,10 @@
     }
     
     function renderizarDashboard() {
+        const tabelaDashboard = $('#tabelaDashboard');
+        const nenhumDashboard = $('#nenhumDashboard');
         if (!tabelaDashboard) return;
+        
         const ruas = {}; state.contagensFinalizadas.forEach(c=>{if(!ruas[c.rua])ruas[c.rua]={itens:0,paletes:0,ultima:'',contagem:1};ruas[c.rua].itens++;ruas[c.rua].paletes+=c.quantidade;if(!ruas[c.rua].ultima||new Date(c.dataISO)>new Date(ruas[c.rua].ultima))ruas[c.rua].ultima=c.dataISO;if(c.contagem>ruas[c.rua].contagem)ruas[c.rua].contagem=c.contagem;});
         tabelaDashboard.innerHTML = ''; const entradas = Object.entries(ruas);
         if (!entradas.length) { if (nenhumDashboard) nenhumDashboard.style.display = 'block'; }
@@ -413,6 +316,11 @@
     }
     
     function atualizarEstatisticas() {
+        const statItens = $('#statItens');
+        const statPaletes = $('#statPaletes');
+        const statProdutos = $('#statProdutos');
+        const statUltima = $('#statUltima');
+        
         const totalGeral = state.contagensFinalizadas.length;
         if (statItens) statItens.textContent = totalGeral.toLocaleString('pt-BR');
         if (statPaletes) statPaletes.textContent = state.contagensFinalizadas.reduce((s,c)=>s+(c.quantidade||0),0).toLocaleString('pt-BR');
@@ -422,6 +330,8 @@
     
     // ============ USUÁRIOS ============
     async function renderizarUsuarios() {
+        const tabelaUsuarios = $('#tabelaUsuarios');
+        const nenhumUsuario = $('#nenhumUsuario');
         if (!tabelaUsuarios) return;
         const users = await Auth.getAllUsers(); tabelaUsuarios.innerHTML = '';
         if (!users.length) { if (nenhumUsuario) nenhumUsuario.style.display = 'block'; }
@@ -434,99 +344,106 @@
     
     // ============ EVENTOS ============
     function setupEventListeners() {
-        try {
-            if (hamburgerBtn) hamburgerBtn.addEventListener('click', abrirSidebar);
-            if (sidebarClose) sidebarClose.addEventListener('click', fecharSidebar);
-            if (sidebarOverlay) sidebarOverlay.addEventListener('click', fecharSidebar);
-            $$('.sidebar-item[data-section]').forEach(item => item.addEventListener('click', () => abrirSecao(item.dataset.section)));
-            
-            const darkBtn = $('#menuDarkMode');
-            if (darkBtn) darkBtn.addEventListener('click', () => { document.body.classList.toggle('dark-mode'); localStorage.setItem('blmez_darkmode', document.body.classList.contains('dark-mode')?'1':'0'); darkBtn.textContent = document.body.classList.contains('dark-mode')?'☀️ Modo Claro':'🌓 Modo Escuro'; });
-            
-            $('#menuSync')?.addEventListener('click', async () => { await syncFromSupabase(); Utils.showToast('✅ Sincronizado!','success'); });
-            $('#menuBackup')?.addEventListener('click', () => { const dados = [...state.contagensLocal, ...state.contagensFinalizadas]; if (!dados.length) return; Utils.downloadBlob(new Blob([JSON.stringify(dados)],{type:'application/json'}),'backup_'+new Date().toISOString().slice(0,10)+'.json'); });
-            $('#menuRestore')?.addEventListener('click', () => restoreFileInput?.click());
-            if (restoreFileInput) restoreFileInput.addEventListener('change', (e) => { if(!e.target.files[0])return; const r=new FileReader(); r.onload=(ev)=>{try{const d=JSON.parse(ev.target.result);state.contagensLocal=d.filter(c=>!c.finalizada);state.contagensFinalizadas=d.filter(c=>c.finalizada);saveContagens();renderizarHistorico();renderizarDashboard();atualizarEstatisticas();atualizarHistoricoRua();}catch(ex){}}; r.readAsText(e.target.files[0]); e.target.value=''; });
-            $('#menuLogout')?.addEventListener('click', () => { if (confirm('Sair?')) Auth.logout(); });
-            
-            if (btnAddUser) btnAddUser.addEventListener('click', () => { const n=novoNome?.value.trim(),u=novoUsuario?.value.trim(),s=novaSenha?.value,r=novoRole?.value; if(!n||!u||!s)return; if(!/^\d+$/.test(u)){Utils.showToast('⚠️ Matrícula apenas números','error');return;} const res=Auth.cadastrar(n,u,s); if(res.sucesso){if(r==='master')Auth.updateUser(u,{role:'master'});if(novoNome)novoNome.value='';if(novoUsuario)novoUsuario.value='';if(novaSenha)novaSenha.value='';renderizarUsuarios();}else{Utils.showToast('❌ '+res.mensagem,'error');} });
-            
-            if (importZoneMaster && fileInputMaster) {
-                importZoneMaster.addEventListener('click', () => fileInputMaster.click());
-                fileInputMaster.addEventListener('change', async (e) => { const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=async(ev)=>await importarBaseMaster(ev.target.result,f.name); r.readAsText(f); fileInputMaster.value=''; });
-                importZoneMaster.addEventListener('dragover', (e) => { e.preventDefault(); importZoneMaster.classList.add('drag-over'); });
-                importZoneMaster.addEventListener('dragleave', () => importZoneMaster.classList.remove('drag-over'));
-                importZoneMaster.addEventListener('drop', async (e) => { e.preventDefault(); importZoneMaster.classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(!f)return; const r=new FileReader(); r.onload=async(ev)=>await importarBaseMaster(ev.target.result,f.name); r.readAsText(f); });
-            }
-            if(btnRecarregarBase) btnRecarregarBase.addEventListener('click', carregarBaseDoSupabase);
-            
-            if (inputRua) inputRua.addEventListener('change', atualizarHistoricoRua);
-            if (btnFinalizarRua) btnFinalizarRua.addEventListener('click', finalizarContagemRua);
-            
-            if (inputCodigo) {
-                inputCodigo.addEventListener('input', function() { this.classList.remove('input-success','input-error'); });
-                inputCodigo.addEventListener('change', function() { processarCodigo(this.value); });
-                inputCodigo.addEventListener('keydown', function(e) { if(e.key==='Enter'){e.preventDefault();processarCodigo(this.value);if(inputDescricao?.value&&inputQuantidade){setTimeout(()=>{inputQuantidade.focus();inputQuantidade.select();},200);}} });
-            }
-            
-            if(btnSalvar) btnSalvar.addEventListener('click', () => {
-                if (state.salvandoContagem) return;
-                const rua = inputRua?.value || '';
-                const codigo = inputCodigo?.value.trim() || '';
-                const desc = inputDescricao?.value.trim() || '';
-                const emb = inputEmbalagem?.value.trim() || '';
-                const qtd = parseInt(inputQuantidade?.value) || 0;
-                const obs = inputObservacoes?.value.trim() || '';
-                if (!rua || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos','error'); return; }
-                if (!/^\d+$/.test(codigo)) { Utils.showToast('⚠️ Código apenas números','error'); return; }
-                state.salvandoContagem = true;
-                const dh = Utils.formatDataHora(new Date());
-                const contagem = { localId: Utils.generateId(), rua, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome, contagem: 1, finalizada: false };
-                salvarContagem(contagem).then(res => {
-                    if (res !== 'cancelar') {
-                        Utils.showToast('✅ Salvo!','success');
-                        if (inputRua?.value) localStorage.setItem(ULTIMA_RUA_KEY, inputRua.value);
-                        const ruaSalva = inputRua?.value || '';
-                        if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
-                        if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
-                        if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
-                        if (inputRua) inputRua.value = ruaSalva; if (inputCodigo) inputCodigo.focus();
-                        atualizarHistoricoRua();
-                    }
-                    state.salvandoContagem = false;
-                });
+        const hamburgerBtn = $('#hamburgerBtn');
+        const sidebar = $('#sidebar');
+        const sidebarOverlay = $('#sidebarOverlay');
+        const sidebarClose = $('#sidebarClose');
+
+        if (hamburgerBtn) hamburgerBtn.addEventListener('click', () => { if(sidebar) sidebar.classList.add('open'); if(sidebarOverlay) sidebarOverlay.classList.add('open'); });
+        if (sidebarClose) sidebarClose.addEventListener('click', () => { if(sidebar) sidebar.classList.remove('open'); if(sidebarOverlay) sidebarOverlay.classList.remove('open'); });
+        if (sidebarOverlay) sidebarOverlay.addEventListener('click', () => { if(sidebar) sidebar.classList.remove('open'); if(sidebarOverlay) sidebarOverlay.classList.remove('open'); });
+        
+        $$('.sidebar-item[data-section]').forEach(item => item.addEventListener('click', () => {
+            const nome = item.dataset.section;
+            ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.remove('active');
             });
+            const mapa = { contagem: 'secaoContagem', base: 'secaoBase', historico: 'secaoHistorico', dashboard: 'secaoDashboard', usuarios: 'secaoUsuarios' };
+            const secao = document.getElementById(mapa[nome]);
+            if (secao) secao.classList.add('active');
             
-            if(btnNovaContagem) btnNovaContagem.addEventListener('click', () => {
-                const ruaAtual = inputRua?.value || '';
-                if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
-                if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
-                if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
-                if (inputRua) inputRua.value = ruaAtual; if (inputCodigo) inputCodigo.focus();
-                atualizarHistoricoRua();
-            });
+            $$('.sidebar-item[data-section]').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
             
-            if(btnCamera) btnCamera.addEventListener('click', () => { if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; } else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigoLido) => { if (inputCodigo) inputCodigo.value = codigoLido; processarCodigo(codigoLido); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); } });
-            if(btnFecharCamera) btnFecharCamera.addEventListener('click', () => { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; });
-            if(btnCameraContinuo) btnCameraContinuo.addEventListener('click', () => { const cont = Camera.toggleContinuous(); if (modoCameraLabel) modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO'; });
-            
-            $('#btnEditarExistente')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar'); });
-            $('#btnSomarQuantidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar'); });
-            $('#btnCancelarDuplicidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; state.resolvendoDuplicidade = null; });
-            
-            if(btnExportCSV) btnExportCSV.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Matrícula:c.usuario||'',Usuário:c.usuarioNome||'',Contagem:(c.contagem||1)+'ª',Status:'Finalizada'})); if(!dados.length)return; const cab=Object.keys(dados[0]).join(';'); Utils.downloadBlob(new Blob(['\uFEFF'+[cab,...dados.map(d=>Object.values(d).map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';'))].join('\n')],{type:'text/csv;charset=utf-8;'}),'contagem_'+new Date().toISOString().slice(0,10)+'.csv'); });
-            if(btnExportExcel) btnExportExcel.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Matrícula:c.usuario||'',Usuário:c.usuarioNome||'',Contagem:(c.contagem||1)+'ª',Status:'Finalizada'})); if(!dados.length)return; const ws=XLSX.utils.json_to_sheet(dados);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Contagens');XLSX.writeFile(wb,'contagem_'+new Date().toISOString().slice(0,10)+'.xlsx'); });
-            
-            [filtroRua,filtroCodigo,filtroDescricao].forEach(i=>i?.addEventListener('input',renderizarHistorico));
-            $$('thead th[data-sort]').forEach(th=>th.addEventListener('click',()=>{const col=th.dataset.sort;state.sortDirection=state.sortColumn===col?(state.sortDirection==='asc'?'desc':'asc'):'asc';state.sortColumn=col;renderizarHistorico();}));
-            
-            document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&Camera.isOpen){Camera.close();if(modalCamera)modalCamera.style.display='none';}if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();btnSalvar?.click();}});
-            window.addEventListener('online',async()=>{state.dbConnected=true;updateConnectionDot();});
-            window.addEventListener('offline',()=>{state.dbConnected=false;updateConnectionDot();});
-            
-        } catch(err) {
-            console.error('Erro ao adicionar eventos:', err);
+            if(nome === 'historico') renderizarHistorico();
+            if(nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
+            if(nome === 'usuarios') renderizarUsuarios();
+            if(nome === 'contagem') atualizarHistoricoRua();
+            if(sidebar) sidebar.classList.remove('open'); if(sidebarOverlay) sidebarOverlay.classList.remove('open');
+        }));
+        
+        const darkBtn = $('#menuDarkMode');
+        if (darkBtn) darkBtn.addEventListener('click', () => { document.body.classList.toggle('dark-mode'); localStorage.setItem('blmez_darkmode', document.body.classList.contains('dark-mode')?'1':'0'); darkBtn.textContent = document.body.classList.contains('dark-mode')?'☀️ Modo Claro':'🌓 Modo Escuro'; });
+        
+        const btnSync = $('#menuSync');
+        if(btnSync) btnSync.addEventListener('click', async () => { await syncFromSupabase(); Utils.showToast('✅ Sincronizado!','success'); });
+        
+        const btnExportCSV = $('#btnExportCSV');
+        if(btnExportCSV) btnExportCSV.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Matrícula:c.usuario||'',Usuário:c.usuarioNome||'',Contagem:(c.contagem||1)+'ª'})); if(!dados.length)return; const cab=Object.keys(dados[0]).join(';'); Utils.downloadBlob(new Blob(['\uFEFF'+[cab,...dados.map(d=>Object.values(d).map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';'))].join('\n')],{type:'text/csv;charset=utf-8;'}),'contagem.csv'); });
+        
+        if (inputRua) inputRua.addEventListener('change', atualizarHistoricoRua);
+        
+        const btnFinalizarRua = $('#btnFinalizarRua');
+        if (btnFinalizarRua) btnFinalizarRua.addEventListener('click', finalizarContagemRua);
+        
+        if (inputCodigo) {
+            inputCodigo.addEventListener('input', function() { this.classList.remove('input-success','input-error'); });
+            inputCodigo.addEventListener('change', function() { processarCodigo(this.value); });
+            inputCodigo.addEventListener('keydown', function(e) { if(e.key==='Enter'){e.preventDefault();processarCodigo(this.value);if(inputDescricao?.value&&inputQuantidade){setTimeout(()=>{inputQuantidade.focus();inputQuantidade.select();},200);}} });
         }
+        
+        const btnSalvar = $('#btnSalvar');
+        if(btnSalvar) btnSalvar.addEventListener('click', () => {
+            if (state.salvandoContagem) return;
+            const rua = inputRua?.value || '';
+            const codigo = inputCodigo?.value.trim() || '';
+            const desc = inputDescricao?.value.trim() || '';
+            const emb = inputEmbalagem?.value.trim() || '';
+            const qtd = parseInt(inputQuantidade?.value) || 0;
+            const obs = inputObservacoes?.value.trim() || '';
+            if (!rua || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos','error'); return; }
+            if (!/^\d+$/.test(codigo)) { Utils.showToast('⚠️ Código apenas números','error'); return; }
+            state.salvandoContagem = true;
+            const dh = Utils.formatDataHora(new Date());
+            const contagem = { localId: Utils.generateId(), rua, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome, contagem: 1, finalizada: false };
+            salvarContagem(contagem).then(res => {
+                if (res !== 'cancelar') {
+                    Utils.showToast('✅ Salvo!','success');
+                    if (inputRua?.value) localStorage.setItem(ULTIMA_RUA_KEY, inputRua.value);
+                    const ruaSalva = inputRua?.value || '';
+                    if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
+                    if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
+                    if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
+                    if (inputRua) inputRua.value = ruaSalva; if (inputCodigo) inputCodigo.focus();
+                    atualizarHistoricoRua();
+                }
+                state.salvandoContagem = false;
+            });
+        });
+        
+        const btnNovaContagem = $('#btnNovaContagem');
+        if(btnNovaContagem) btnNovaContagem.addEventListener('click', () => {
+            const ruaAtual = inputRua?.value || '';
+            if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
+            if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
+            if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
+            if (inputRua) inputRua.value = ruaAtual; if (inputCodigo) inputCodigo.focus();
+            atualizarHistoricoRua();
+        });
+        
+        const btnCamera = $('#btnCamera');
+        const modalCamera = $('#modalCamera');
+        if(btnCamera) btnCamera.addEventListener('click', () => { if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; } else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open($('#cameraVideo'), (codigoLido) => { if (inputCodigo) inputCodigo.value = codigoLido; processarCodigo(codigoLido); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); } });
+        
+        const btnFecharCamera = $('#btnFecharCamera');
+        if(btnFecharCamera) btnFecharCamera.addEventListener('click', () => { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; });
+        
+        $('#btnEditarExistente')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar'); });
+        $('#btnSomarQuantidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar'); });
+        $('#btnCancelarDuplicidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; state.resolvendoDuplicidade = null; });
+        
+        document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&Camera.isOpen){Camera.close();if(modalCamera)modalCamera.style.display='none';}});
     }
     
     init();
