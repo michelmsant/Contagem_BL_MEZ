@@ -379,6 +379,68 @@
         const btnSync = $('#menuSync');
         if(btnSync) btnSync.addEventListener('click', async () => { await syncFromSupabase(); Utils.showToast('✅ Sincronizado!','success'); });
         
+        // ============ BACKUP ============
+        const btnBackup = $('#menuBackup');
+        if (btnBackup) {
+            btnBackup.addEventListener('click', () => {
+                const dados = [...state.contagensLocal, ...state.contagensFinalizadas];
+                if (!dados.length) {
+                    Utils.showToast('⚠️ Nenhum dado para backup.', 'error');
+                    return;
+                }
+                const json = JSON.stringify(dados, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                Utils.downloadBlob(blob, `backup_blmez_${new Date().toISOString().slice(0, 10)}.json`);
+                Utils.showToast('✅ Backup realizado com sucesso!', 'success');
+            });
+        }
+
+        // ============ RESTAURAR ============
+        const btnRestore = $('#menuRestore');
+        const restoreFileInput = $('#restoreFileInput');
+        
+        if (btnRestore && restoreFileInput) {
+            btnRestore.addEventListener('click', () => restoreFileInput.click());
+            
+            restoreFileInput.addEventListener('change', (e) => {
+                if (!e.target.files[0]) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const dados = JSON.parse(ev.target.result);
+                        if (!Array.isArray(dados)) throw new Error('Formato inválido');
+                        
+                        if (confirm(`Restaurar ${dados.length} registros? Isso substituirá o histórico atual.`)) {
+                            state.contagensLocal = dados.filter(c => !c.finalizada);
+                            state.contagensFinalizadas = dados.filter(c => c.finalizada);
+                            
+                            saveContagens();
+                            renderizarHistorico();
+                            renderizarDashboard();
+                            atualizarEstatisticas();
+                            atualizarHistoricoRua();
+                            
+                            Utils.showToast(`✅ ${dados.length} registros restaurados!`, 'success');
+                        }
+                    } catch (err) {
+                        Utils.showToast('❌ Arquivo inválido.', 'error');
+                    }
+                };
+                reader.readAsText(e.target.files[0]);
+                e.target.value = '';
+            });
+        }
+
+        // ============ SAIR ============
+        const btnLogout = $('#menuLogout');
+        if (btnLogout) {
+            btnLogout.addEventListener('click', () => {
+                if (confirm('Deseja realmente sair?')) {
+                    Auth.logout();
+                }
+            });
+        }
+        
         const btnExportCSV = $('#btnExportCSV');
         if(btnExportCSV) btnExportCSV.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Matrícula:c.usuario||'',Usuário:c.usuarioNome||'',Contagem:(c.contagem||1)+'ª'})); if(!dados.length)return; const cab=Object.keys(dados[0]).join(';'); Utils.downloadBlob(new Blob(['\uFEFF'+[cab,...dados.map(d=>Object.values(d).map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';'))].join('\n')],{type:'text/csv;charset=utf-8;'}),'contagem.csv'); });
         
