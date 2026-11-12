@@ -1,27 +1,34 @@
+// ============================================================
+// APP.JS - Lógica principal da aplicação
+// Versão otimizada para bases grandes (sem localStorage de produtos)
+// ============================================================
+
 (function() {
     'use strict';
     
+    // Verificar acesso
     const currentUser = Auth.checkAccess();
     if (!currentUser) return;
+    
     const isMaster = Auth.isMaster();
     
-    const $ = (s) => document.querySelector(s);
-    const $$ = (s) => document.querySelectorAll(s);
+    // Atalhos DOM
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
     
-    const ULTIMA_RUA_KEY = 'blmez_ultima_rua';
-    
-    const hamburgerBtn = $('#hamburgerBtn');
-    const sidebar = $('#sidebar');
-    const sidebarOverlay = $('#sidebarOverlay');
-    const sidebarClose = $('#sidebarClose');
-    const menuBase = $('#menuBase');
-    const menuHistorico = $('#menuHistorico');
-    const menuUsuarios = $('#menuUsuarios');
+    // Elementos da UI
     const userNameDisplay = $('#userNameDisplay');
     const masterBadge = $('#masterBadge');
-    const connectionDot = $('#connectionDot');
+    const hamburgerBtn = $('#hamburgerBtn');
+    const menuDropdown = $('#menuDropdown');
+    const tabHistoricoBtn = $('#tabHistoricoBtn');
+    const importZone = $('#importZone');
+    const fileInput = $('#fileInput');
+    const progressBar = $('#progressBar');
+    const progressFill = $('#progressFill');
     const importInfo = $('#importInfo');
     const inputRua = $('#rua');
+    const inputFaixa = $('#faixa');
     const inputCodigo = $('#codigo');
     const inputDescricao = $('#descricao');
     const inputEmbalagem = $('#embalagem');
@@ -36,9 +43,8 @@
     const statUltima = $('#statUltima');
     const tabelaHistorico = $('#tabelaHistorico');
     const nenhumRegistro = $('#nenhumRegistro');
-    const tabelaDashboard = $('#tabelaDashboard');
-    const nenhumDashboard = $('#nenhumDashboard');
     const filtroRua = $('#filtroRua');
+    const filtroFaixa = $('#filtroFaixa');
     const filtroCodigo = $('#filtroCodigo');
     const filtroDescricao = $('#filtroDescricao');
     const modalDuplicidade = $('#modalDuplicidade');
@@ -48,611 +54,1007 @@
     const btnFecharCamera = $('#btnFecharCamera');
     const btnCameraContinuo = $('#btnCameraContinuo');
     const modoCameraLabel = $('#modoCameraLabel');
-    const importZoneMaster = $('#importZoneMaster');
-    const fileInputMaster = $('#fileInputMaster');
-    const progressBarMaster = $('#progressBarMaster');
-    const progressFillMaster = $('#progressFillMaster');
-    const importStatusMaster = $('#importStatusMaster');
-    const baseInfo = $('#baseInfo');
-    const btnRecarregarBase = $('#btnRecarregarBase');
-    const restoreFileInput = $('#restoreFileInput');
-    const btnExportCSV = $('#btnExportCSV');
-    const btnExportExcel = $('#btnExportExcel');
-    const tabelaUsuarios = $('#tabelaUsuarios');
-    const nenhumUsuario = $('#nenhumUsuario');
-    const btnAddUser = $('#btnAddUser');
-    const novoNome = $('#novoNome');
-    const novoUsuario = $('#novoUsuario');
-    const novaSenha = $('#novaSenha');
-    const novoRole = $('#novoRole');
-    const tabelaHistoricoRua = $('#tabelaHistoricoRua');
-    const nenhumHistoricoRua = $('#nenhumHistoricoRua');
-    const cardHistoricoRua = $('#cardHistoricoRua');
-    const ruaAtualHistorico = $('#ruaAtualHistorico');
-    const indicadorContagem = $('#indicadorContagem');
-    const btnFinalizarRua = $('#btnFinalizarRua');
     
+    // ============ ESTADO DA APLICAÇÃO ============
     const state = {
+        // Produtos ficam APENAS em memória (não no localStorage)
         produtosMapCodAcesso: new Map(),
         produtosMapSeqProduto: new Map(),
         baseMeta: null,
-        contagensLocal: [],      // APENAS contagens pendentes (não finalizadas)
-        contagensFinalizadas: [], // Contagens do Supabase
+        
+        // Contagens (leves, cabem no localStorage)
+        contagensLocal: [],
         pendingContagens: [],
+        
+        // UI
         sortColumn: null,
         sortDirection: 'asc',
         resolvendoDuplicidade: null,
-        dbConnected: false,
-        salvandoContagem: false
+        isLoading: false
     };
     
     // ============ INICIALIZAÇÃO ============
     async function init() {
-        console.log('🚀 Iniciando Contagem BL_MEZ...');
+        // Exibir nome do usuário
+        userNameDisplay.textContent = `👤 ${currentUser.nome}`;
+        
+        // Badge de master
+        if (isMaster) {
+            masterBadge.style.display = 'inline';
+            tabHistoricoBtn.style.display = 'inline-block';
+        }
+        
+        // Inicializar Supabase
+        const dbOk = Database.init();
+        console.log(dbOk ? '✅ Supabase conectado' : '⚠️ Supabase offline');
+        
+        // Carregar contagens do localStorage
+        loadContagens();
+        
+        // Tentar carregar produtos do Supabase
+        if (Database.supabase) {
+            await carregarProdutosDoSupabase();
+        }
+        
+        // Carregar metadados salvos
+        carregarMetadados();
+        
+        // Renderizar
+        renderizarHistorico();
+        atualizarEstatisticas();
+        atualizarInfoImportacao();
+        
+        // Sincronizar contagens pendentes
+        if (Database.supabase && navigator.onLine) {
+            await syncPendingContagens();
+        }
+        
+        // Dark mode
+        const darkPref = localStorage.getItem('blmez_darkmode');
+        if (darkPref === '1') {
+            document.body.classList.add('dark-mode');
+            const darkBtn = $('#menuDarkMode');
+            if (darkBtn) darkBtn.textContent = '☀️ Modo Claro';
+        }
+        
+        // Foco inicial
+        inputRua.focus();
+        
+        console.log('🚀 Contagem BL_MEZ pronta!');
+        console.log(`   Produtos em memória: ${state.produtosMapCodAcesso.size}`);
+        console.log(`   Contagens: ${state.contagensLocal.length}`);
+    }
+    
+    // ============ CARREGAR PRODUTOS DO SUPABASE ============
+    async function carregarProdutosDoSupabase() {
+        if (!Database.supabase) return;
         
         try {
-            if (userNameDisplay) userNameDisplay.textContent = '👤 ' + (currentUser.nome || currentUser.usuario);
+            Utils.showToast('🔄 Carregando base do Supabase...', 'success');
             
-            if (isMaster) {
-                if (masterBadge) masterBadge.style.display = 'inline';
-                if (menuBase) menuBase.style.display = 'block';
-                if (menuHistorico) menuHistorico.style.display = 'block';
-                if (menuUsuarios) menuUsuarios.style.display = 'block';
-            }
-            
-            loadContagens();
-            
-            const meta = Database.loadBaseMeta();
-            if (meta && !state.baseMeta) state.baseMeta = meta;
-            
-            const ultimaRua = localStorage.getItem(ULTIMA_RUA_KEY);
-            if (ultimaRua && inputRua) inputRua.value = ultimaRua;
-            
-            if (localStorage.getItem('blmez_darkmode') === '1') {
-                document.body.classList.add('dark-mode');
-                const darkBtn = $('#menuDarkMode');
-                if (darkBtn) darkBtn.textContent = '☀️ Modo Claro';
-            }
-            
-            setupEventListeners();
-            abrirSecao('contagem');
-            
-            console.log('✅ Interface pronta!');
-            
-            // Conectar ao Supabase e buscar finalizadas
-            const dbOk = Database.init();
-            state.dbConnected = dbOk;
-            updateConnectionDot();
-            
-            if (dbOk) {
-                const testOk = await Database.testConnection();
-                state.dbConnected = testOk;
-                updateConnectionDot();
-                if (testOk) {
-                    await carregarBaseDoSupabase();
-                    await syncFromSupabase();
-                }
-            }
-            
-            atualizarHistoricoRua();
-            renderizarHistorico();
-            renderizarDashboard();
-            atualizarEstatisticas();
-            
-        } catch (err) {
-            console.error('❌ Erro:', err);
-        }
-    }
-    
-    function updateConnectionDot() {
-        if (connectionDot) connectionDot.textContent = state.dbConnected ? '🟢' : '🔴';
-    }
-    
-    // ============ SYNCRONIZAR DO SUPABASE (APENAS FINALIZADAS) ============
-    async function syncFromSupabase() {
-        if (!Database.supabase) return;
-        try {
-            const remotas = await Database.fetchContagens();
-            if (remotas && remotas.length > 0) {
-                state.contagensFinalizadas = remotas.map(c => ({
-                    localId: 'remote_' + c.id,
-                    supabase_id: c.id,
-                    data: c.data,
-                    rua: c.rua,
-                    codigo: c.codigo,
-                    descricao: c.descricao,
-                    embalagem: c.embalagem,
-                    quantidade: c.quantidade,
-                    contagem: c.contagem || 1,
-                    observacoes: c.observacoes || '',
-                    usuario: c.matricula || '',
-                    usuarioNome: c.usuario || '',
-                    dataISO: c.created_at,
-                    finalizada: true,
-                    synced: true
-                }));
-                console.log('✅ ' + state.contagensFinalizadas.length + ' contagens finalizadas do Supabase');
-                renderizarHistorico();
-                renderizarDashboard();
-                atualizarEstatisticas();
-            }
-        } catch (err) {}
-    }
-    
-    // ============ SIDEBAR ============
-    function abrirSidebar() {
-        if (sidebar) sidebar.classList.add('open');
-        if (sidebarOverlay) sidebarOverlay.classList.add('open');
-    }
-    
-    function fecharSidebar() {
-        if (sidebar) sidebar.classList.remove('open');
-        if (sidebarOverlay) sidebarOverlay.classList.remove('open');
-    }
-    
-    function abrirSecao(nome) {
-        try {
-            ['secaoContagem', 'secaoBase', 'secaoHistorico', 'secaoDashboard', 'secaoUsuarios'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.classList.remove('active');
-            });
-            
-            const mapa = { contagem: 'secaoContagem', base: 'secaoBase', historico: 'secaoHistorico', dashboard: 'secaoDashboard', usuarios: 'secaoUsuarios' };
-            const secao = document.getElementById(mapa[nome]);
-            if (secao) secao.classList.add('active');
-            
-            $$('.sidebar-item[data-section]').forEach(item => {
-                item.classList.remove('active');
-                if (item.dataset.section === nome) item.classList.add('active');
-            });
-            
-            setTimeout(() => {
-                if (nome === 'historico') renderizarHistorico();
-                if (nome === 'dashboard') { renderizarDashboard(); atualizarEstatisticas(); }
-                if (nome === 'base') { atualizarInfoImportacao(); atualizarBaseInfo(); }
-                if (nome === 'usuarios') renderizarUsuarios();
-                if (nome === 'contagem') atualizarHistoricoRua();
-            }, 100);
-            
-            fecharSidebar();
-        } catch (err) {}
-    }
-    
-    // ============ BASE DE PRODUTOS ============
-    async function carregarBaseDoSupabase() {
-        if (!Database.supabase) return;
-        try {
             const produtos = await Database.fetchProdutos();
+            
             if (produtos && produtos.length > 0) {
-                construirIndices(produtos);
-                state.baseMeta = { nomeArquivo: 'Supabase', totalRegistros: produtos.length, dataHoraImportacao: new Date().toISOString() };
-                Database.saveBaseMeta(state.baseMeta);
-                atualizarInfoImportacao(); atualizarBaseInfo();
+                // Construir índices em memória
+                state.produtosMapCodAcesso.clear();
+                state.produtosMapSeqProduto.clear();
+                
+                for (const p of produtos) {
+                    const embFormatada = p.embalagem && p.qtdembalagem 
+                        ? `${p.embalagem} x ${p.qtdembalagem}` 
+                        : (p.embalagem || p.qtdembalagem || '');
+                    
+                    const produto = {
+                        seqProduto: p.seqproduto,
+                        descCompleta: p.desccompleta,
+                        codAcesso: p.codacesso,
+                        embalagem: p.embalagem,
+                        qtdEmbalagem: p.qtdembalagem,
+                        embalagemFormatada: embFormatada
+                    };
+                    
+                    if (p.codacesso) state.produtosMapCodAcesso.set(p.codacesso, produto);
+                    if (p.seqproduto) state.produtosMapSeqProduto.set(p.seqproduto, produto);
+                }
+                
+                state.baseMeta = {
+                    nomeArquivo: 'Supabase',
+                    totalRegistros: produtos.length,
+                    dataHoraImportacao: new Date().toISOString()
+                };
+                
+                atualizarInfoImportacao();
+                console.log(`✅ ${produtos.length} produtos carregados do Supabase`);
             }
-        } catch (err) {}
-    }
-    
-    function construirIndices(produtos) {
-        state.produtosMapCodAcesso.clear(); state.produtosMapSeqProduto.clear();
-        for (const p of produtos) {
-            const emb = p.embalagem && p.qtdembalagem ? p.embalagem + ' x ' + p.qtdembalagem : (p.embalagem || p.qtdembalagem || '');
-            const prod = { seqProduto: p.seqproduto || '', descCompleta: p.desccompleta || '', codAcesso: p.codacesso || '', embalagem: p.embalagem || '', qtdEmbalagem: p.qtdembalagem || '', embalagemFormatada: emb };
-            if (prod.codAcesso) state.produtosMapCodAcesso.set(prod.codAcesso, prod);
-            if (prod.seqProduto) state.produtosMapSeqProduto.set(prod.seqProduto, prod);
+        } catch (err) {
+            console.error('Erro ao carregar produtos:', err);
+            Utils.showToast('⚠️ Não foi possível carregar a base do Supabase', 'error');
         }
     }
     
-    async function importarBaseMaster(conteudo, nomeArquivo) {
-        if (!Database.supabase) { Utils.showToast('❌ Offline', 'error'); return; }
-        progressBarMaster.classList.add('active');
-        try {
-            const linhas = conteudo.split(/\r?\n/).filter(l => l.trim());
-            if (!linhas.length) throw new Error('Vazio');
-            const delimitadores = ['\t', ';', ','];
-            let del = '\t', max = 0;
-            delimitadores.forEach(d => { const c = linhas[0].split(d).length; if (c > max) { max = c; del = d; } });
-            const cab = linhas[0].split(del);
-            const inicio = cab.some(c => /seqproduto|codacesso/i.test(c)) ? 1 : 0;
-            if (cab.length < 9) throw new Error('9 colunas necessárias');
-            const arr = [];
-            for (let i = inicio; i < linhas.length; i++) {
-                const cols = linhas[i].split(del);
-                if (cols.length < 9) continue;
-                arr.push({ seqproduto: (cols[1]||'').trim(), desccompleta: (cols[2]||'').trim(), codacesso: (cols[3]||'').trim(), embalagem: (cols[7]||'').trim(), qtdembalagem: (cols[8]||'').trim() });
-            }
-            await Database.replaceProdutos(arr, (p) => { progressFillMaster.style.width = p + '%'; });
-            construirIndices(arr.map(p => ({ seqproduto: p.seqproduto, desccompleta: p.desccompleta, codacesso: p.codacesso, embalagem: p.embalagem, qtdembalagem: p.qtdembalagem })));
-            state.baseMeta = { nomeArquivo, totalRegistros: state.produtosMapCodAcesso.size, dataHoraImportacao: new Date().toISOString() };
+    // ============ METADADOS (leves) ============
+    function salvarMetadados() {
+        if (state.baseMeta) {
             Database.saveBaseMeta(state.baseMeta);
-            atualizarInfoImportacao(); atualizarBaseInfo();
-            importStatusMaster.innerHTML = '<span style="color:green">✅ ' + state.produtosMapCodAcesso.size + ' produtos</span>';
+        }
+    }
+    
+    function carregarMetadados() {
+        const meta = Database.loadBaseMeta();
+        if (meta && !state.baseMeta) {
+            state.baseMeta = meta;
+        }
+    }
+    
+    // ============ CONTAGENS (LOCAL) ============
+    function loadContagens() {
+        try {
+            const data = localStorage.getItem(Database.KEYS.CONTAGENS);
+            state.contagensLocal = data ? JSON.parse(data) : [];
+            const pending = localStorage.getItem(Database.KEYS.PENDING);
+            state.pendingContagens = pending ? JSON.parse(pending) : [];
+        } catch (e) {
+            state.contagensLocal = [];
+            state.pendingContagens = [];
+        }
+    }
+    
+    function saveContagens() {
+        try {
+            localStorage.setItem(Database.KEYS.CONTAGENS, JSON.stringify(state.contagensLocal));
+            localStorage.setItem(Database.KEYS.PENDING, JSON.stringify(state.pendingContagens));
+        } catch (e) {
+            console.warn('Erro ao salvar contagens:', e);
+        }
+    }
+    
+    // ============ IMPORTAÇÃO DE BASE ============
+    async function importarBase(conteudo, nomeArquivo) {
+        if (state.isLoading) {
+            Utils.showToast('⚠️ Já existe uma importação em andamento.', 'error');
+            return;
+        }
+        
+        state.isLoading = true;
+        progressBar.classList.add('active');
+        progressFill.style.width = '0%';
+        
+        try {
+            const linhas = conteudo.split(/\r?\n/).filter(l => l.trim() !== '');
+            if (linhas.length === 0) throw new Error('Arquivo vazio.');
+            
+            // Detectar delimitador
+            const delimitadores = ['\t', ';', ','];
+            let delimitador = '\t';
+            let maxCols = 0;
+            for (const d of delimitadores) {
+                const cols = linhas[0].split(d).length;
+                if (cols > maxCols) { maxCols = cols; delimitador = d; }
+            }
+            
+            const primeiraCols = linhas[0].split(delimitador);
+            const pareceCabecalho = primeiraCols.some(c => /seqproduto|codacesso/i.test(c.trim()));
+            const inicioDados = pareceCabecalho ? 1 : 0;
+            
+            if (primeiraCols.length < 9) {
+                throw new Error('Arquivo precisa ter pelo menos 9 colunas (até coluna I).');
+            }
+            
+            Utils.showToast(`📂 Processando ${linhas.length - inicioDados} linhas...`, 'success');
+            
+            // Limpar índices em memória
+            state.produtosMapCodAcesso.clear();
+            state.produtosMapSeqProduto.clear();
+            
+            // Array para envio ao Supabase
+            const produtosParaSupabase = [];
+            
+            // Processar linhas
+            for (let i = inicioDados; i < linhas.length; i++) {
+                const cols = linhas[i].split(delimitador);
+                if (cols.length < 9) continue;
+                
+                const seqProduto = (cols[1] || '').trim();
+                const descCompleta = (cols[2] || '').trim();
+                const codAcesso = (cols[3] || '').trim();
+                const embalagem = (cols[7] || '').trim();
+                const qtdEmbalagem = (cols[8] || '').trim();
+                
+                if (!codAcesso && !seqProduto) continue;
+                
+                const embFormatada = embalagem && qtdEmbalagem 
+                    ? `${embalagem} x ${qtdEmbalagem}` 
+                    : (embalagem || qtdEmbalagem || '');
+                
+                const produto = { 
+                    seqProduto, descCompleta, codAcesso, 
+                    embalagem, qtdEmbalagem, embalagemFormatada: embFormatada 
+                };
+                
+                // Adicionar aos índices em memória
+                if (codAcesso) state.produtosMapCodAcesso.set(codAcesso, produto);
+                if (seqProduto) state.produtosMapSeqProduto.set(seqProduto, produto);
+                
+                // Preparar para Supabase
+                produtosParaSupabase.push({
+                    seqproduto: seqProduto,
+                    desccompleta: descCompleta,
+                    codacesso: codAcesso,
+                    embalagem: embalagem,
+                    qtdembalagem: qtdEmbalagem
+                });
+            }
+            
+            // Atualizar metadados
+            state.baseMeta = {
+                nomeArquivo,
+                totalRegistros: state.produtosMapCodAcesso.size,
+                dataHoraImportacao: new Date().toISOString()
+            };
+            
+            salvarMetadados();
+            atualizarInfoImportacao();
+            
+            // Enviar para o Supabase (substituindo a base existente)
+            if (Database.supabase && navigator.onLine) {
+                try {
+                    Utils.showToast('☁️ Enviando para Supabase...', 'success');
+                    
+                    await Database.replaceProdutos(produtosParaSupabase, (progresso) => {
+                        progressFill.style.width = progresso + '%';
+                    });
+                    
+                    Utils.showToast('✅ Base enviada para o Supabase!', 'success');
+                } catch (err) {
+                    console.error('Erro ao enviar para Supabase:', err);
+                    Utils.showToast('⚠️ Base carregada localmente, mas falha ao enviar: ' + err.message, 'error');
+                }
+            } else {
+                Utils.showToast('⚠️ Offline - base carregada apenas em memória.', 'error');
+            }
+            
+            Utils.showToast(`✅ ${state.produtosMapCodAcesso.size} produtos importados!`, 'success');
+            
         } catch (err) {
-            importStatusMaster.innerHTML = '<span style="color:red">❌ ' + Utils.escapeHTML(err.message) + '</span>';
+            console.error('Erro na importação:', err);
+            Utils.showToast('❌ Erro: ' + err.message, 'error');
         } finally {
-            progressBarMaster.classList.remove('active');
+            state.isLoading = false;
+            progressBar.classList.remove('active');
+            progressFill.style.width = '0%';
         }
     }
     
     function atualizarInfoImportacao() {
         if (!importInfo) return;
-        if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) { importInfo.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma base carregada.</span>'; return; }
-        const dh = Utils.formatDataHora(state.baseMeta.dataHoraImportacao);
-        importInfo.innerHTML = '<span class="badge">📄 ' + Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base') + '</span> <span class="badge">📊 ' + state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' registros</span> <span>📅 ' + dh.data + ' ' + dh.hora + '</span>';
+        
+        if (!state.baseMeta || state.produtosMapCodAcesso.size === 0) {
+            importInfo.innerHTML = '<span style="color:#999;">Nenhuma base carregada. Importe um arquivo TXT.</span>';
+            return;
+        }
+        
+        const dh = state.baseMeta.dataHoraImportacao 
+            ? Utils.formatDataHora(state.baseMeta.dataHoraImportacao) 
+            : { data: '--', hora: '--' };
+        
+        importInfo.innerHTML = `
+            <span class="badge">📄 ${Utils.escapeHTML(state.baseMeta.nomeArquivo || 'Base')}</span>
+            <span class="badge">📊 ${state.produtosMapCodAcesso.size.toLocaleString('pt-BR')} registros</span>
+            <span>📅 ${dh.data} ${dh.hora}</span>
+            ${Database.supabase ? '<span class="badge">☁️ Supabase</span>' : '<span class="badge-warning">📱 Local</span>'}
+        `;
     }
     
-    function atualizarBaseInfo() { if (baseInfo) baseInfo.textContent = state.produtosMapCodAcesso.size.toLocaleString('pt-BR') + ' produtos na base'; }
-    
-    // ============ PESQUISA ============
+    // ============ PESQUISA DE PRODUTOS ============
     function pesquisarProduto(codigo) {
-        if (!codigo?.trim()) return null;
-        const c = codigo.trim();
-        if (state.produtosMapCodAcesso.has(c)) return state.produtosMapCodAcesso.get(c);
-        if (state.produtosMapSeqProduto.has(c)) return state.produtosMapSeqProduto.get(c);
-        for (const [k, v] of state.produtosMapCodAcesso) if (k.startsWith(c)) return v;
-        for (const [k, v] of state.produtosMapSeqProduto) if (k.startsWith(c)) return v;
+        if (!codigo || codigo.trim() === '') return null;
+        const cod = codigo.trim();
+        
+        // Busca exata
+        if (state.produtosMapCodAcesso.has(cod)) return state.produtosMapCodAcesso.get(cod);
+        if (state.produtosMapSeqProduto.has(cod)) return state.produtosMapSeqProduto.get(cod);
+        
+        // Busca parcial (começa com)
+        for (const [key, val] of state.produtosMapCodAcesso) {
+            if (key.startsWith(cod)) return val;
+        }
+        for (const [key, val] of state.produtosMapSeqProduto) {
+            if (key.startsWith(cod)) return val;
+        }
+        
         return null;
     }
     
-    function processarCodigo(codigoDigitado) {
-        if (!codigoDigitado?.trim()) { if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = ''; return; }
-        if (!state.produtosMapCodAcesso.size) { Utils.showToast('⚠️ Base vazia', 'error'); return; }
-        const produto = pesquisarProduto(codigoDigitado);
-        if (produto) {
-            if (inputDescricao) inputDescricao.value = produto.descCompleta;
-            if (inputEmbalagem) inputEmbalagem.value = produto.embalagemFormatada;
-            if (inputCodigo) { inputCodigo.value = produto.seqProduto || codigoDigitado; inputCodigo.classList.add('input-success'); setTimeout(() => inputCodigo?.classList.remove('input-success'), 1500); }
-            Utils.playBeep(); Utils.vibrate(40);
-        } else {
-            if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
-            if (inputCodigo) { inputCodigo.classList.add('input-error'); setTimeout(() => inputCodigo?.classList.remove('input-error'), 1500); }
-            Utils.showToast('❌ Não encontrado', 'error');
-        }
-    }
-    
-    // ============ CONTAGENS LOCAIS (PENDENTES) ============
-    function loadContagens() {
-        try {
-            state.contagensLocal = JSON.parse(localStorage.getItem(Database.KEYS.CONTAGENS) || '[]');
-            state.pendingContagens = JSON.parse(localStorage.getItem(Database.KEYS.PENDING) || '[]');
-        } catch (e) { state.contagensLocal = []; state.pendingContagens = []; }
-    }
-    
-    function saveContagens() {
-        try { 
-            localStorage.setItem(Database.KEYS.CONTAGENS, JSON.stringify(state.contagensLocal)); 
-            localStorage.setItem(Database.KEYS.PENDING, JSON.stringify(state.pendingContagens)); 
-        } catch (e) {}
-    }
-    
+    // ============ SALVAR CONTAGEM ============
     async function salvarContagem(contagem) {
-        delete contagem.faixa;
-        
-        // Verificar se a rua já foi finalizada (buscar nas finalizadas do Supabase)
-        const ruaFinalizada = state.contagensFinalizadas.find(c => c.rua === contagem.rua && c.contagem === 1);
-        const numeroContagemAtual = ruaFinalizada ? 2 : 1;
-        contagem.contagem = numeroContagemAtual;
-        contagem.finalizada = false;
-        contagem.synced = false;
-        contagem.supabase_id = null;
-        
-        // Verificar duplicidade nas PENDENTES (localStorage)
-        const idx = state.contagensLocal.findIndex(c => 
+        // Verificar duplicidade
+        const existente = state.contagensLocal.findIndex(c =>
             c.rua === contagem.rua && 
-            c.codigo === contagem.codigo && 
-            c.contagem === numeroContagemAtual &&
-            c.finalizada === false
+            c.faixa === contagem.faixa && 
+            c.codigo === contagem.codigo
         );
         
-        if (idx >= 0) {
-            return new Promise(resolve => {
-                state.resolvendoDuplicidade = (op) => {
+        if (existente >= 0) {
+            return new Promise((resolve) => {
+                state.resolvendoDuplicidade = (opcao) => {
                     state.resolvendoDuplicidade = null;
                     
-                    if (op === 'editar') {
-                        state.contagensLocal[idx] = { ...contagem, synced: false, localId: state.contagensLocal[idx].localId, contagem: numeroContagemAtual, finalizada: false };
-                    } else if (op === 'somar') {
-                        state.contagensLocal[idx].quantidade += contagem.quantidade;
-                        state.contagensLocal[idx].observacoes = contagem.observacoes || state.contagensLocal[idx].observacoes || '';
-                        state.contagensLocal[idx].data = contagem.data;
-                        state.contagensLocal[idx].hora = contagem.hora;
-                        state.contagensLocal[idx].dataISO = contagem.dataISO;
-                        state.contagensLocal[idx].usuario = contagem.usuario;
-                        state.contagensLocal[idx].usuarioNome = contagem.usuarioNome;
-                        state.contagensLocal[idx].contagem = numeroContagemAtual;
-                    } else {
-                        resolve(op);
-                        return;
+                    if (opcao === 'editar') {
+                        state.contagensLocal[existente] = { 
+                            ...contagem, 
+                            synced: false, 
+                            localId: state.contagensLocal[existente].localId 
+                        };
+                    } else if (opcao === 'somar') {
+                        state.contagensLocal[existente].quantidade += contagem.quantidade;
+                        state.contagensLocal[existente].observacoes = contagem.observacoes || state.contagensLocal[existente].observacoes;
+                        state.contagensLocal[existente].synced = false;
                     }
                     
                     saveContagens();
-                    atualizarHistoricoRua();
-                    resolve(op);
+                    renderizarHistorico();
+                    atualizarEstatisticas();
+                    resolve(opcao);
                 };
                 
-                msgDuplicidade.innerHTML = '<strong>' + Utils.escapeHTML(state.contagensLocal[idx].rua) + '</strong><br>Código: ' + Utils.escapeHTML(state.contagensLocal[idx].codigo) + '<br>Contagem: ' + numeroContagemAtual + 'ª<br>Qtd atual: ' + state.contagensLocal[idx].quantidade + ' | Somar: ' + contagem.quantidade;
+                msgDuplicidade.innerHTML = `
+                    <strong>Rua:</strong> ${Utils.escapeHTML(state.contagensLocal[existente].rua)} |
+                    <strong>Faixa:</strong> ${state.contagensLocal[existente].faixa}<br>
+                    <strong>Código:</strong> ${Utils.escapeHTML(state.contagensLocal[existente].codigo)}<br>
+                    <strong>Qtd atual:</strong> ${state.contagensLocal[existente].quantidade} |
+                    <strong>Nova:</strong> ${contagem.quantidade}
+                `;
                 modalDuplicidade.style.display = 'flex';
             });
         }
         
+        // Nova contagem
         state.contagensLocal.push(contagem);
+        state.pendingContagens.push(contagem);
         saveContagens();
-        atualizarHistoricoRua();
+        
+        // Tentar sincronizar
+        if (Database.supabase && navigator.onLine) {
+            await syncPendingContagens();
+        }
+        
         return 'novo';
     }
     
-    // ============ HISTÓRICO DA RUA (APENAS PENDENTES) ============
-    function atualizarHistoricoRua() {
-        const ruaSelecionada = inputRua?.value || '';
-        if (!ruaSelecionada) { if (cardHistoricoRua) cardHistoricoRua.style.display = 'none'; return; }
-        if (cardHistoricoRua) cardHistoricoRua.style.display = 'block';
-        if (ruaAtualHistorico) ruaAtualHistorico.textContent = ruaSelecionada;
+    async function syncPendingContagens() {
+        if (!Database.supabase || state.pendingContagens.length === 0) return;
         
-        const contagensPendentes = state.contagensLocal.filter(c => c.rua === ruaSelecionada && c.finalizada === false);
+        let sincronizados = 0;
         
-        // Verificar se existe contagem finalizada no Supabase
-        const ruaFinalizada = state.contagensFinalizadas.find(c => c.rua === ruaSelecionada && c.contagem === 1);
-        
-        if (indicadorContagem) {
-            if (ruaFinalizada) {
-                indicadorContagem.textContent = '🔄 SEGUNDA contagem da rua ' + ruaSelecionada;
-                indicadorContagem.style.background = 'var(--orange-light)';
-                indicadorContagem.style.color = 'var(--orange-dark)';
-            } else if (contagensPendentes.length > 0) {
-                indicadorContagem.textContent = '📝 PRIMEIRA contagem em andamento na rua ' + ruaSelecionada;
-                indicadorContagem.style.background = 'var(--green-light)';
-                indicadorContagem.style.color = 'var(--green-dark)';
-            } else {
-                indicadorContagem.textContent = '📝 Aguardando itens para contagem da rua ' + ruaSelecionada;
-                indicadorContagem.style.background = 'var(--accent-light)';
-                indicadorContagem.style.color = 'var(--accent)';
-            }
-        }
-        
-        if (tabelaHistoricoRua) {
-            tabelaHistoricoRua.innerHTML = '';
-            if (contagensPendentes.length === 0) {
-                if (nenhumHistoricoRua) { nenhumHistoricoRua.textContent = 'Nenhuma contagem pendente para esta rua.'; nenhumHistoricoRua.style.display = 'block'; }
-            } else {
-                if (nenhumHistoricoRua) nenhumHistoricoRua.style.display = 'none';
-                contagensPendentes.forEach(c => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = '<td>' + Utils.escapeHTML(c.rua) + '</td><td>' + Utils.escapeHTML(c.codigo) + '</td><td>' + Utils.escapeHTML(c.descricao) + '</td><td><strong>' + c.quantidade + '</strong></td>';
-                    tabelaHistoricoRua.appendChild(tr);
+        for (const cont of [...state.pendingContagens]) {
+            try {
+                const result = await Database.saveContagem({
+                    rua: cont.rua,
+                    faixa: cont.faixa,
+                    codigo: cont.codigo,
+                    descricao: cont.descricao,
+                    embalagem: cont.embalagem,
+                    quantidade: cont.quantidade,
+                    observacoes: cont.observacoes || '',
+                    data: cont.data,
+                    hora: cont.hora
                 });
+                
+                cont.synced = true;
+                cont.supabase_id = result.id;
+                state.pendingContagens = state.pendingContagens.filter(c => c.localId !== cont.localId);
+                sincronizados++;
+            } catch (err) {
+                console.error('Erro ao sincronizar contagem:', err);
             }
         }
         
-        if (btnFinalizarRua) {
-            btnFinalizarRua.style.display = contagensPendentes.length === 0 ? 'none' : 'block';
-        }
-    }
-    
-    // ============ FINALIZAR (ENVIA PARA SUPABASE E LIMPA LOCAL) ============
-    async function finalizarContagemRua() {
-        const ruaSelecionada = inputRua?.value || '';
-        if (!ruaSelecionada) { Utils.showToast('⚠️ Selecione uma rua', 'error'); return; }
-        
-        // Determinar número da contagem
-        const ruaFinalizada = state.contagensFinalizadas.find(c => c.rua === ruaSelecionada && c.contagem === 1);
-        const numeroContagem = ruaFinalizada ? 2 : 1;
-        
-        const contagensParaFinalizar = state.contagensLocal.filter(c => 
-            c.rua === ruaSelecionada && 
-            c.contagem === numeroContagem && 
-            c.finalizada === false
-        );
-        
-        if (contagensParaFinalizar.length === 0) { Utils.showToast('⚠️ Nada para finalizar', 'error'); return; }
-        
-        if (!confirm('Finalizar ' + numeroContagem + 'ª contagem da rua ' + ruaSelecionada + '?\nTotal: ' + contagensParaFinalizar.length + ' itens')) return;
-        
-        try {
-            // Enviar para o Supabase
-            if (Database.supabase && navigator.onLine) {
-                console.log('🚀 Enviando ' + contagensParaFinalizar.length + ' contagens para o Supabase...');
-                
-                for (const c of contagensParaFinalizar) {
-                    try {
-                        const res = await Database.saveContagem({
-                            data: c.data,
-                            rua: c.rua,
-                            codigo: c.codigo,
-                            descricao: c.descricao,
-                            embalagem: c.embalagem,
-                            quantidade: c.quantidade,
-                            contagem: numeroContagem,
-                            observacoes: c.observacoes || '',
-                            matricula: c.usuario || '',
-                            usuario: c.usuarioNome || ''
-                        });
-                        
-                        c.supabase_id = res.id;
-                        c.synced = true;
-                        c.finalizada = true;
-                        console.log('✅ Enviado:', c.codigo, '| Qtd:', c.quantidade);
-                    } catch (err) {
-                        console.error('❌ Erro:', err.message);
-                        throw err;
-                    }
-                }
-                
-                // Adicionar às finalizadas locais
-                state.contagensFinalizadas = [...state.contagensFinalizadas, ...contagensParaFinalizar];
-                
-                // REMOVER do localStorage (contagens pendentes)
-                state.contagensLocal = state.contagensLocal.filter(c => 
-                    !(c.rua === ruaSelecionada && c.contagem === numeroContagem && c.finalizada === false)
-                );
-                saveContagens();
-                
-                Utils.showToast('✅ ' + numeroContagem + 'ª contagem da rua ' + ruaSelecionada + ' finalizada!', 'success');
-            } else {
-                // Offline - manter no localStorage
-                contagensParaFinalizar.forEach(c => { c.finalizada = true; });
-                saveContagens();
-                Utils.showToast('⚠️ Offline - contagem finalizada localmente, sincronizar depois', 'warning');
-            }
-            
-            atualizarHistoricoRua();
+        if (sincronizados > 0) {
+            saveContagens();
             renderizarHistorico();
-            renderizarDashboard();
             atualizarEstatisticas();
-            
-        } catch (err) {
-            Utils.showToast('❌ Erro: ' + err.message, 'error');
+            Utils.showToast(`✅ ${sincronizados} contagens sincronizadas!`, 'success');
         }
     }
     
-    // ============ RENDER ============
+    // ============ RENDERIZAÇÃO ============
     function getHistoricoFiltrado() {
-        // Histórico mostra apenas contagens FINALIZADAS (do Supabase)
-        let lista = [...state.contagensFinalizadas];
-        if (filtroRua?.value.trim()) lista = lista.filter(c => c.rua.toLowerCase().includes(filtroRua.value.toLowerCase().trim()));
-        if (filtroCodigo?.value.trim()) lista = lista.filter(c => c.codigo.toLowerCase().includes(filtroCodigo.value.toLowerCase().trim()));
-        if (filtroDescricao?.value.trim()) lista = lista.filter(c => c.descricao.toLowerCase().includes(filtroDescricao.value.toLowerCase().trim()));
-        if (state.sortColumn) { lista.sort((a,b)=>{let va=a[state.sortColumn],vb=b[state.sortColumn];if(typeof va==='string')va=va.toLowerCase();if(typeof vb==='string')vb=vb.toLowerCase();return state.sortDirection==='asc'?(va<vb?-1:1):(va>vb?-1:1);}); } else { lista.sort((a,b)=>new Date(b.dataISO||0)-new Date(a.dataISO||0)); }
+        let lista = [...state.contagensLocal];
+        
+        // Aplicar filtros
+        if (filtroRua && filtroRua.value.trim()) {
+            const f = filtroRua.value.toLowerCase().trim();
+            lista = lista.filter(c => c.rua.toLowerCase().includes(f));
+        }
+        if (filtroFaixa && filtroFaixa.value.trim()) {
+            const f = filtroFaixa.value.toLowerCase().trim();
+            lista = lista.filter(c => String(c.faixa).includes(f));
+        }
+        if (filtroCodigo && filtroCodigo.value.trim()) {
+            const f = filtroCodigo.value.toLowerCase().trim();
+            lista = lista.filter(c => c.codigo.toLowerCase().includes(f));
+        }
+        if (filtroDescricao && filtroDescricao.value.trim()) {
+            const f = filtroDescricao.value.toLowerCase().trim();
+            lista = lista.filter(c => c.descricao.toLowerCase().includes(f));
+        }
+        
+        // Ordenar
+        if (state.sortColumn) {
+            lista.sort((a, b) => {
+                let va = a[state.sortColumn];
+                let vb = b[state.sortColumn];
+                if (typeof va === 'string') va = va.toLowerCase();
+                if (typeof vb === 'string') vb = vb.toLowerCase();
+                return state.sortDirection === 'asc' ? (va < vb ? -1 : 1) : (va > vb ? -1 : 1);
+            });
+        } else {
+            lista.sort((a, b) => new Date(b.dataISO || 0) - new Date(a.dataISO || 0));
+        }
+        
         return lista;
     }
     
     function renderizarHistorico() {
         if (!tabelaHistorico) return;
-        const lista = getHistoricoFiltrado(); tabelaHistorico.innerHTML = '';
-        if (!lista.length) { if (nenhumRegistro) nenhumRegistro.style.display = 'block'; }
-        else { if (nenhumRegistro) nenhumRegistro.style.display = 'none';
-            lista.forEach(c => { const tr = document.createElement('tr'); tr.innerHTML = '<td>'+Utils.escapeHTML(c.rua)+'</td><td>'+Utils.escapeHTML(c.codigo)+' ☁️</td><td>'+Utils.escapeHTML(c.descricao)+'</td><td>'+Utils.escapeHTML(c.embalagem)+'</td><td><strong>'+c.quantidade+'</strong></td><td>'+(c.data||'--')+'</td><td>'+(c.hora||'--')+'</td><td>'+Utils.escapeHTML(c.usuarioNome||c.usuario||'--')+'</td><td>'+(c.contagem||1)+'ª</td><td>✅ Finalizada</td><td><button class="btn btn-danger-text btn-sm btn-excluir" data-id="'+c.localId+'">🗑️</button></td>'; tabelaHistorico.appendChild(tr); });
-            tabelaHistorico.querySelectorAll('.btn-excluir').forEach(b=>b.addEventListener('click',async function(){const i=state.contagensFinalizadas.findIndex(c=>c.localId===this.dataset.id);if(i>=0){if(confirm('Excluir?')){const c=state.contagensFinalizadas[i];if(c.supabase_id&&Database.supabase)await Database.deleteContagem(c.supabase_id);state.contagensFinalizadas.splice(i,1);renderizarHistorico();renderizarDashboard();atualizarEstatisticas();}}}));
+        
+        const lista = getHistoricoFiltrado();
+        tabelaHistorico.innerHTML = '';
+        
+        if (lista.length === 0) {
+            if (nenhumRegistro) nenhumRegistro.style.display = 'block';
+        } else {
+            if (nenhumRegistro) nenhumRegistro.style.display = 'none';
+            
+            lista.forEach(c => {
+                const syncedIcon = c.synced ? '☁️' : '📱';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${Utils.escapeHTML(c.rua)}</td>
+                    <td>${c.faixa}</td>
+                    <td>${Utils.escapeHTML(c.codigo)} ${syncedIcon}</td>
+                    <td>${Utils.escapeHTML(c.descricao)}</td>
+                    <td>${Utils.escapeHTML(c.embalagem)}</td>
+                    <td><strong>${c.quantidade}</strong></td>
+                    <td>${c.data || '--'}</td>
+                    <td>${c.hora || '--'}</td>
+                    <td>
+                        <button class="btn btn-outline btn-sm btn-editar" data-id="${c.localId}">✏️</button>
+                        <button class="btn btn-danger-text btn-sm btn-excluir" data-id="${c.localId}">🗑️</button>
+                    </td>
+                `;
+                tabelaHistorico.appendChild(tr);
+            });
+            
+            // Eventos dos botões
+            tabelaHistorico.querySelectorAll('.btn-editar').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = state.contagensLocal.findIndex(c => c.localId === btn.dataset.id);
+                    if (idx >= 0) editarContagem(idx);
+                });
+            });
+            
+            tabelaHistorico.querySelectorAll('.btn-excluir').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = state.contagensLocal.findIndex(c => c.localId === btn.dataset.id);
+                    if (idx >= 0) excluirContagem(idx);
+                });
+            });
         }
-    }
-    
-    function renderizarDashboard() {
-        if (!tabelaDashboard) return;
-        const ruas = {}; state.contagensFinalizadas.forEach(c=>{if(!ruas[c.rua])ruas[c.rua]={itens:0,paletes:0,ultima:'',contagem:1};ruas[c.rua].itens++;ruas[c.rua].paletes+=c.quantidade;if(!ruas[c.rua].ultima||new Date(c.dataISO)>new Date(ruas[c.rua].ultima))ruas[c.rua].ultima=c.dataISO;if(c.contagem>ruas[c.rua].contagem)ruas[c.rua].contagem=c.contagem;});
-        tabelaDashboard.innerHTML = ''; const entradas = Object.entries(ruas);
-        if (!entradas.length) { if (nenhumDashboard) nenhumDashboard.style.display = 'block'; }
-        else { if (nenhumDashboard) nenhumDashboard.style.display = 'none'; entradas.forEach(([rua,dados])=>{const dh=dados.ultima?Utils.formatDataHora(dados.ultima):{data:'--',hora:'--'};const tr=document.createElement('tr');tr.innerHTML='<td><strong>'+Utils.escapeHTML(rua)+'</strong></td><td>'+dados.itens+'</td><td>'+dados.paletes+'</td><td>'+dh.data+' '+dh.hora+'</td><td>'+dados.contagem+'ª</td><td>✅</td>';tabelaDashboard.appendChild(tr);}); }
+        
+        // Atualizar ícones de ordenação
+        $$('thead th[data-sort]').forEach(th => {
+            const icon = th.querySelector('.sort-icon');
+            if (icon) {
+                icon.textContent = th.dataset.sort === state.sortColumn 
+                    ? (state.sortDirection === 'asc' ? '▲' : '▼') 
+                    : '';
+            }
+        });
     }
     
     function editarContagem(index) {
         const c = state.contagensLocal[index];
-        if (inputRua) inputRua.value = c.rua; if (inputCodigo) inputCodigo.value = c.codigo;
-        if (inputDescricao) inputDescricao.value = c.descricao; if (inputEmbalagem) inputEmbalagem.value = c.embalagem;
-        if (inputQuantidade) inputQuantidade.value = c.quantidade; if (inputObservacoes) inputObservacoes.value = c.observacoes||'';
-        state.contagensLocal.splice(index,1);
-        saveContagens(); atualizarHistoricoRua();
-        abrirSecao('contagem'); Utils.showToast('Editando...','success');
+        inputRua.value = c.rua;
+        inputFaixa.value = c.faixa;
+        inputCodigo.value = c.codigo;
+        inputDescricao.value = c.descricao;
+        inputEmbalagem.value = c.embalagem;
+        inputQuantidade.value = c.quantidade;
+        inputObservacoes.value = c.observacoes || '';
+        
+        // Remover a contagem antiga
+        state.contagensLocal.splice(index, 1);
+        state.pendingContagens = state.pendingContagens.filter(p => p.localId !== c.localId);
+        saveContagens();
+        renderizarHistorico();
+        atualizarEstatisticas();
+        
+        // Mudar para aba de contagem
+        document.querySelector('[data-tab="contagem"]').click();
+        Utils.showToast('Contagem carregada para edição. Faça as alterações e salve.', 'success');
+    }
+    
+    async function excluirContagem(index) {
+        if (!confirm('Deseja realmente excluir esta contagem?')) return;
+        
+        const c = state.contagensLocal[index];
+        
+        // Excluir do Supabase se estiver sincronizado
+        if (c.supabase_id && Database.supabase) {
+            try {
+                await Database.deleteContagem(c.supabase_id);
+            } catch (err) {
+                console.error('Erro ao excluir do Supabase:', err);
+            }
+        }
+        
+        state.contagensLocal.splice(index, 1);
+        state.pendingContagens = state.pendingContagens.filter(p => p.localId !== c.localId);
+        saveContagens();
+        renderizarHistorico();
+        atualizarEstatisticas();
+        Utils.showToast('Contagem excluída.', 'success');
     }
     
     function atualizarEstatisticas() {
-        const totalGeral = state.contagensFinalizadas.length;
-        if (statItens) statItens.textContent = totalGeral.toLocaleString('pt-BR');
-        if (statPaletes) statPaletes.textContent = state.contagensFinalizadas.reduce((s,c)=>s+(c.quantidade||0),0).toLocaleString('pt-BR');
-        if (statProdutos) statProdutos.textContent = new Set(state.contagensFinalizadas.map(c=>c.codigo)).size.toLocaleString('pt-BR');
-        if (statUltima && state.contagensFinalizadas.length) { const u=state.contagensFinalizadas[state.contagensFinalizadas.length-1]; statUltima.textContent=(u.data||'--')+' '+(u.hora||'--'); }
-    }
-    
-    // ============ USUÁRIOS ============
-    async function renderizarUsuarios() {
-        if (!tabelaUsuarios) return;
-        const users = await Auth.getAllUsers(); tabelaUsuarios.innerHTML = '';
-        if (!users.length) { if (nenhumUsuario) nenhumUsuario.style.display = 'block'; }
-        else { if (nenhumUsuario) nenhumUsuario.style.display = 'none';
-            users.forEach(u=>{const tr=document.createElement('tr');const dc=u.created_at?Utils.formatDataHora(u.created_at):{data:'--',hora:'--'};tr.innerHTML='<td>'+Utils.escapeHTML(u.nome)+'</td><td>'+Utils.escapeHTML(u.usuario)+'</td><td>'+(u.role==='master'?'👑 Master':'👤 Usuário')+'</td><td>'+(u.ativo!==false?'🟢':'🔴')+'</td><td>'+dc.data+'</td><td>'+(u.usuario!=='5461448'?'<button class="btn btn-outline btn-sm btn-toggle-user" data-user="'+u.usuario+'" data-role="'+(u.role==='master'?'user':'master')+'">'+(u.role==='master'?'⬇':'⬆')+'</button> <button class="btn btn-danger-text btn-sm btn-delete-user" data-user="'+u.usuario+'">🗑️</button>':'Admin')+'</td>';tabelaUsuarios.appendChild(tr);});
-            tabelaUsuarios.querySelectorAll('.btn-toggle-user').forEach(b=>b.addEventListener('click',async function(){await Auth.updateUser(this.dataset.user,{role:this.dataset.role});renderizarUsuarios();}));
-            tabelaUsuarios.querySelectorAll('.btn-delete-user').forEach(b=>b.addEventListener('click',async function(){await Auth.deleteUser(this.dataset.user);renderizarUsuarios();}));
+        if (statItens) statItens.textContent = state.contagensLocal.length.toLocaleString('pt-BR');
+        if (statPaletes) statPaletes.textContent = state.contagensLocal.reduce((s, c) => s + (c.quantidade || 0), 0).toLocaleString('pt-BR');
+        if (statProdutos) statProdutos.textContent = new Set(state.contagensLocal.map(c => c.codigo)).size.toLocaleString('pt-BR');
+        if (statUltima && state.contagensLocal.length > 0) {
+            const u = state.contagensLocal[state.contagensLocal.length - 1];
+            statUltima.textContent = `${u.data || '--'} ${u.hora || '--'}`;
         }
     }
     
-    // ============ EVENTOS ============
-    function setupEventListeners() {
-        if (hamburgerBtn) hamburgerBtn.addEventListener('click', abrirSidebar);
-        if (sidebarClose) sidebarClose.addEventListener('click', fecharSidebar);
-        if (sidebarOverlay) sidebarOverlay.addEventListener('click', fecharSidebar);
-        $$('.sidebar-item[data-section]').forEach(item => item.addEventListener('click', () => abrirSecao(item.dataset.section)));
-        
-        const darkBtn = $('#menuDarkMode');
-        if (darkBtn) darkBtn.addEventListener('click', () => { document.body.classList.toggle('dark-mode'); localStorage.setItem('blmez_darkmode', document.body.classList.contains('dark-mode')?'1':'0'); darkBtn.textContent = document.body.classList.contains('dark-mode')?'☀️ Modo Claro':'🌓 Modo Escuro'; });
-        
-        $('#menuSync')?.addEventListener('click', async () => { await syncFromSupabase(); Utils.showToast('✅ Sincronizado!','success'); });
-        $('#menuBackup')?.addEventListener('click', () => { const dados = [...state.contagensLocal, ...state.contagensFinalizadas]; if (!dados.length) return; Utils.downloadBlob(new Blob([JSON.stringify(dados)],{type:'application/json'}),'backup_'+new Date().toISOString().slice(0,10)+'.json'); });
-        $('#menuRestore')?.addEventListener('click', () => restoreFileInput?.click());
-        if (restoreFileInput) restoreFileInput.addEventListener('change', (e) => { if(!e.target.files[0])return; const r=new FileReader(); r.onload=(ev)=>{try{const d=JSON.parse(ev.target.result);state.contagensLocal=d.filter(c=>!c.finalizada);state.contagensFinalizadas=d.filter(c=>c.finalizada);saveContagens();renderizarHistorico();renderizarDashboard();atualizarEstatisticas();atualizarHistoricoRua();}catch(ex){}}; r.readAsText(e.target.files[0]); e.target.value=''; });
-        $('#menuLogout')?.addEventListener('click', () => { if (confirm('Sair?')) Auth.logout(); });
-        
-        if (btnAddUser) btnAddUser.addEventListener('click', () => { const n=novoNome?.value.trim(),u=novoUsuario?.value.trim(),s=novaSenha?.value,r=novoRole?.value; if(!n||!u||!s)return; if(!/^\d+$/.test(u)){Utils.showToast('⚠️ Matrícula apenas números','error');return;} const res=Auth.cadastrar(n,u,s); if(res.sucesso){if(r==='master')Auth.updateUser(u,{role:'master'});if(novoNome)novoNome.value='';if(novoUsuario)novoUsuario.value='';if(novaSenha)novaSenha.value='';renderizarUsuarios();}else{Utils.showToast('❌ '+res.mensagem,'error');} });
-        
-        if (importZoneMaster && fileInputMaster) {
-            importZoneMaster.addEventListener('click', () => fileInputMaster.click());
-            fileInputMaster.addEventListener('change', async (e) => { const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=async(ev)=>await importarBaseMaster(ev.target.result,f.name); r.readAsText(f); fileInputMaster.value=''; });
-            importZoneMaster.addEventListener('dragover', (e) => { e.preventDefault(); importZoneMaster.classList.add('drag-over'); });
-            importZoneMaster.addEventListener('dragleave', () => importZoneMaster.classList.remove('drag-over'));
-            importZoneMaster.addEventListener('drop', async (e) => { e.preventDefault(); importZoneMaster.classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(!f)return; const r=new FileReader(); r.onload=async(ev)=>await importarBaseMaster(ev.target.result,f.name); r.readAsText(f); });
+    // ============ EVENT LISTENERS ============
+    
+    // Menu hamburguer
+    hamburgerBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menuDropdown.classList.toggle('show');
+        hamburgerBtn.classList.toggle('active');
+    });
+    
+    document.addEventListener('click', () => {
+        menuDropdown.classList.remove('show');
+        hamburgerBtn.classList.remove('active');
+    });
+    
+    menuDropdown.addEventListener('click', (e) => e.stopPropagation());
+    
+    // Itens do menu
+    $('#menuDarkMode').addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const isDark = document.body.classList.contains('dark-mode');
+        localStorage.setItem('blmez_darkmode', isDark ? '1' : '0');
+        $('#menuDarkMode').textContent = isDark ? '☀️ Modo Claro' : '🌓 Modo Escuro';
+        menuDropdown.classList.remove('show');
+    });
+    
+    $('#menuSync').addEventListener('click', async () => {
+        menuDropdown.classList.remove('show');
+        if (!Database.supabase) {
+            Utils.showToast('Supabase não configurado.', 'error');
+            return;
         }
-        btnRecarregarBase?.addEventListener('click', carregarBaseDoSupabase);
-        
-        if (inputRua) inputRua.addEventListener('change', atualizarHistoricoRua);
-        if (btnFinalizarRua) btnFinalizarRua.addEventListener('click', finalizarContagemRua);
-        
-        if (inputCodigo) {
-            inputCodigo.addEventListener('input', function() { this.classList.remove('input-success','input-error'); });
-            inputCodigo.addEventListener('change', function() { processarCodigo(this.value); });
-            inputCodigo.addEventListener('keydown', function(e) { if(e.key==='Enter'){e.preventDefault();processarCodigo(this.value);if(inputDescricao?.value&&inputQuantidade){setTimeout(()=>{inputQuantidade.focus();inputQuantidade.select();},200);}} });
+        await syncPendingContagens();
+        if (state.pendingContagens.length === 0) {
+            Utils.showToast('✅ Tudo sincronizado!', 'success');
         }
-        
-        btnSalvar?.addEventListener('click', () => {
-            if (state.salvandoContagem) return;
-            const rua = inputRua?.value || '';
-            const codigo = inputCodigo?.value.trim() || '';
-            const desc = inputDescricao?.value.trim() || '';
-            const emb = inputEmbalagem?.value.trim() || '';
-            const qtd = parseInt(inputQuantidade?.value) || 0;
-            const obs = inputObservacoes?.value.trim() || '';
-            if (!rua || !codigo || !desc || qtd <= 0) { Utils.showToast('⚠️ Preencha todos','error'); return; }
-            if (!/^\d+$/.test(codigo)) { Utils.showToast('⚠️ Código apenas números','error'); return; }
-            state.salvandoContagem = true;
-            const dh = Utils.formatDataHora(new Date());
-            const contagem = { localId: Utils.generateId(), rua, codigo, descricao: desc, embalagem: emb, quantidade: qtd, observacoes: obs, data: dh.data, hora: dh.hora, dataISO: dh.iso, synced: false, usuario: currentUser.usuario, usuarioNome: currentUser.nome, contagem: 1, finalizada: false };
-            salvarContagem(contagem).then(res => {
-                if (res !== 'cancelar') {
-                    Utils.showToast('✅ Salvo!','success');
-                    if (inputRua?.value) localStorage.setItem(ULTIMA_RUA_KEY, inputRua.value);
-                    const ruaSalva = inputRua?.value || '';
-                    if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
-                    if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
-                    if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
-                    if (inputRua) inputRua.value = ruaSalva; if (inputCodigo) inputCodigo.focus();
-                    atualizarHistoricoRua();
+    });
+    
+    $('#menuBackup').addEventListener('click', () => {
+        menuDropdown.classList.remove('show');
+        if (state.contagensLocal.length === 0) {
+            Utils.showToast('Nenhum dado para backup.', 'error');
+            return;
+        }
+        const json = JSON.stringify(state.contagensLocal, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        Utils.downloadBlob(blob, `backup_blmez_${new Date().toISOString().slice(0,10)}.json`);
+        Utils.showToast('Backup realizado!', 'success');
+    });
+    
+    $('#menuRestore').addEventListener('click', () => {
+        menuDropdown.classList.remove('show');
+        $('#restoreFileInput').click();
+    });
+    
+    $('#restoreFileInput').addEventListener('change', (e) => {
+        if (e.target.files[0]) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const dados = JSON.parse(ev.target.result);
+                    if (!Array.isArray(dados)) throw new Error('Formato inválido');
+                    if (confirm(`Restaurar ${dados.length} registros? Isso substituirá o histórico atual.`)) {
+                        state.contagensLocal = dados;
+                        state.pendingContagens = dados.filter(c => !c.synced);
+                        saveContagens();
+                        renderizarHistorico();
+                        atualizarEstatisticas();
+                        Utils.showToast(`✅ ${dados.length} registros restaurados!`, 'success');
+                    }
+                } catch (err) {
+                    Utils.showToast('Arquivo inválido.', 'error');
                 }
-                state.salvandoContagem = false;
-            });
+            };
+            reader.readAsText(e.target.files[0]);
+            e.target.value = '';
+        }
+    });
+    
+    $('#menuLogout').addEventListener('click', () => {
+        if (confirm('Deseja realmente sair?')) {
+            Auth.logout();
+        }
+    });
+    
+    // Abas
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            const tabContent = document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1));
+            if (tabContent) tabContent.classList.add('active');
+            
+            if (tab === 'historico') renderizarHistorico();
         });
+    });
+    
+    // Importação
+    importZone.addEventListener('click', () => fileInput.click());
+    
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
         
-        btnNovaContagem?.addEventListener('click', () => {
-            const ruaAtual = inputRua?.value || '';
-            if (inputCodigo) { inputCodigo.value = ''; inputCodigo.classList.remove('input-success','input-error'); }
-            if (inputDescricao) inputDescricao.value = ''; if (inputEmbalagem) inputEmbalagem.value = '';
-            if (inputQuantidade) inputQuantidade.value = '1'; if (inputObservacoes) inputObservacoes.value = '';
-            if (inputRua) inputRua.value = ruaAtual; if (inputCodigo) inputCodigo.focus();
-            atualizarHistoricoRua();
-        });
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            await importarBase(ev.target.result, file.name);
+        };
+        reader.readAsText(file);
+        fileInput.value = '';
+    });
+    
+    // Drag and drop
+    importZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        importZone.classList.add('drag-over');
+    });
+    
+    importZone.addEventListener('dragleave', () => {
+        importZone.classList.remove('drag-over');
+    });
+    
+    importZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        importZone.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (!file) return;
         
-        btnCamera?.addEventListener('click', () => { if (Camera.isOpen) { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; } else { if (modalCamera) modalCamera.style.display = 'flex'; Camera.open(cameraVideo, (codigoLido) => { if (inputCodigo) inputCodigo.value = codigoLido; processarCodigo(codigoLido); if (!Camera.continuousMode && modalCamera) modalCamera.style.display = 'none'; }); } });
-        btnFecharCamera?.addEventListener('click', () => { Camera.close(); if (modalCamera) modalCamera.style.display = 'none'; });
-        btnCameraContinuo?.addEventListener('click', () => { const cont = Camera.toggleContinuous(); if (modoCameraLabel) modoCameraLabel.textContent = cont ? 'LIGADO' : 'DESLIGADO'; });
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            await importarBase(ev.target.result, file.name);
+        };
+        reader.readAsText(file);
+    });
+    
+    // Pesquisa de código
+    function pesquisarEAtualizarCampos(codigo) {
+        if (!codigo || codigo.trim() === '') {
+            inputDescricao.value = '';
+            inputEmbalagem.value = '';
+            return;
+        }
         
-        $('#btnEditarExistente')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar'); });
-        $('#btnSomarQuantidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar'); });
-        $('#btnCancelarDuplicidade')?.addEventListener('click', () => { if (modalDuplicidade) modalDuplicidade.style.display = 'none'; state.resolvendoDuplicidade = null; });
+        if (state.produtosMapCodAcesso.size === 0) {
+            Utils.showToast('⚠️ Nenhuma base carregada. Importe um arquivo TXT primeiro.', 'error');
+            return;
+        }
         
-        btnExportCSV?.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Matrícula:c.usuario||'',Usuário:c.usuarioNome||'',Contagem:(c.contagem||1)+'ª',Status:'Finalizada'})); if(!dados.length)return; const cab=Object.keys(dados[0]).join(';'); Utils.downloadBlob(new Blob(['\uFEFF'+[cab,...dados.map(d=>Object.values(d).map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';'))].join('\n')],{type:'text/csv;charset=utf-8;'}),'contagem_'+new Date().toISOString().slice(0,10)+'.csv'); });
-        btnExportExcel?.addEventListener('click', () => { if(!isMaster)return; const dados=getHistoricoFiltrado().map(c=>({Rua:c.rua,Código:c.codigo,Descrição:c.descricao,Embalagem:c.embalagem,Quantidade:c.quantidade,Data:c.data||'',Hora:c.hora||'',Observações:c.observacoes||'',Matrícula:c.usuario||'',Usuário:c.usuarioNome||'',Contagem:(c.contagem||1)+'ª',Status:'Finalizada'})); if(!dados.length)return; const ws=XLSX.utils.json_to_sheet(dados);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Contagens');XLSX.writeFile(wb,'contagem_'+new Date().toISOString().slice(0,10)+'.xlsx'); });
+        const produto = pesquisarProduto(codigo);
         
-        [filtroRua,filtroCodigo,filtroDescricao].forEach(i=>i?.addEventListener('input',renderizarHistorico));
-        $$('thead th[data-sort]').forEach(th=>th.addEventListener('click',()=>{const col=th.dataset.sort;state.sortDirection=state.sortColumn===col?(state.sortDirection==='asc'?'desc':'asc'):'asc';state.sortColumn=col;renderizarHistorico();}));
-        
-        document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&Camera.isOpen){Camera.close();if(modalCamera)modalCamera.style.display='none';}if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();btnSalvar?.click();}});
-        window.addEventListener('online',async()=>{state.dbConnected=true;updateConnectionDot();});
-        window.addEventListener('offline',()=>{state.dbConnected=false;updateConnectionDot();});
+        if (produto) {
+            inputDescricao.value = produto.descCompleta;
+            inputEmbalagem.value = produto.embalagemFormatada;
+            inputCodigo.classList.add('input-success');
+            inputDescricao.classList.add('input-success');
+            inputEmbalagem.classList.add('input-success');
+            setTimeout(() => {
+                inputCodigo.classList.remove('input-success');
+                inputDescricao.classList.remove('input-success');
+                inputEmbalagem.classList.remove('input-success');
+            }, 1500);
+            Utils.playBeep();
+            Utils.vibrate(40);
+        } else {
+            inputDescricao.value = '';
+            inputEmbalagem.value = '';
+            inputCodigo.classList.add('input-error');
+            setTimeout(() => inputCodigo.classList.remove('input-error'), 1500);
+            Utils.showToast('❌ Produto não encontrado na base.', 'error');
+        }
     }
     
+    inputCodigo.addEventListener('change', () => {
+        pesquisarEAtualizarCampos(inputCodigo.value);
+    });
+    
+    inputCodigo.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            pesquisarEAtualizarCampos(inputCodigo.value);
+            if (inputDescricao.value) {
+                inputQuantidade.focus();
+                inputQuantidade.select();
+            }
+        }
+    });
+    
+    inputCodigo.addEventListener('blur', () => {
+        if (inputCodigo.value.trim()) {
+            pesquisarEAtualizarCampos(inputCodigo.value);
+        }
+    });
+    
+    // Salvar contagem
+    btnSalvar.addEventListener('click', async () => {
+        const rua = inputRua.value.trim();
+        const faixaStr = inputFaixa.value.trim();
+        const codigo = inputCodigo.value.trim();
+        const descricao = inputDescricao.value.trim();
+        const embalagem = inputEmbalagem.value.trim();
+        const quantidade = parseInt(inputQuantidade.value) || 0;
+        const observacoes = inputObservacoes.value.trim();
+        
+        // Validações
+        if (!rua) { Utils.showToast('⚠️ Informe a Rua.', 'error'); inputRua.focus(); return; }
+        if (!faixaStr) { Utils.showToast('⚠️ Informe a Faixa.', 'error'); inputFaixa.focus(); return; }
+        if (!codigo) { Utils.showToast('⚠️ Informe o Código.', 'error'); inputCodigo.focus(); return; }
+        if (!descricao) { Utils.showToast('⚠️ Produto não encontrado na base.', 'error'); return; }
+        if (quantidade <= 0) { Utils.showToast('⚠️ Quantidade deve ser maior que zero.', 'error'); inputQuantidade.focus(); return; }
+        
+        const faixa = parseInt(faixaStr);
+        const dh = Utils.formatDataHora(new Date());
+        
+        const contagem = {
+            localId: Utils.generateId(),
+            rua,
+            faixa,
+            codigo,
+            descricao,
+            embalagem,
+            quantidade,
+            observacoes,
+            data: dh.data,
+            hora: dh.hora,
+            dataISO: dh.iso,
+            synced: false,
+            usuario: currentUser.usuario,
+            usuarioNome: currentUser.nome
+        };
+        
+        const resultado = await salvarContagem(contagem);
+        
+        if (resultado === 'novo') {
+            Utils.showToast('✅ Contagem salva com sucesso!', 'success');
+            limparFormulario();
+        } else if (resultado === 'editar') {
+            Utils.showToast('✅ Contagem atualizada!', 'success');
+            limparFormulario();
+        } else if (resultado === 'somar') {
+            Utils.showToast('✅ Quantidade somada!', 'success');
+            limparFormulario();
+        }
+    });
+    
+    function limparFormulario() {
+        inputRua.value = '';
+        inputFaixa.value = '';
+        inputCodigo.value = '';
+        inputDescricao.value = '';
+        inputEmbalagem.value = '';
+        inputQuantidade.value = '1';
+        inputObservacoes.value = '';
+        inputCodigo.classList.remove('input-success', 'input-error');
+        inputDescricao.classList.remove('input-success');
+        inputEmbalagem.classList.remove('input-success');
+        inputRua.focus();
+    }
+    
+    btnNovaContagem.addEventListener('click', limparFormulario);
+    
+    // Câmera
+    btnCamera.addEventListener('click', () => {
+        if (Camera.isOpen) {
+            Camera.close();
+            modalCamera.style.display = 'none';
+        } else {
+            modalCamera.style.display = 'flex';
+            Camera.open(cameraVideo, (codigo) => {
+                inputCodigo.value = codigo;
+                pesquisarEAtualizarCampos(codigo);
+                if (!Camera.continuousMode) {
+                    modalCamera.style.display = 'none';
+                }
+            });
+        }
+    });
+    
+    btnFecharCamera.addEventListener('click', () => {
+        Camera.close();
+        modalCamera.style.display = 'none';
+    });
+    
+    btnCameraContinuo.addEventListener('click', () => {
+        const isCont = Camera.toggleContinuous();
+        modoCameraLabel.textContent = isCont ? 'LIGADO' : 'DESLIGADO';
+        btnCameraContinuo.style.background = isCont ? 'var(--green)' : '';
+        btnCameraContinuo.style.color = isCont ? 'white' : '';
+    });
+    
+    modalCamera.addEventListener('click', (e) => {
+        if (e.target === modalCamera) {
+            Camera.close();
+            modalCamera.style.display = 'none';
+        }
+    });
+    
+    // Modal duplicidade
+    $('#btnEditarExistente').addEventListener('click', () => {
+        modalDuplicidade.style.display = 'none';
+        if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('editar');
+    });
+    
+    $('#btnSomarQuantidade').addEventListener('click', () => {
+        modalDuplicidade.style.display = 'none';
+        if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('somar');
+    });
+    
+    $('#btnCancelarDuplicidade').addEventListener('click', () => {
+        modalDuplicidade.style.display = 'none';
+        if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('cancelar');
+    });
+    
+    modalDuplicidade.addEventListener('click', (e) => {
+        if (e.target === modalDuplicidade) {
+            modalDuplicidade.style.display = 'none';
+            if (state.resolvendoDuplicidade) state.resolvendoDuplicidade('cancelar');
+        }
+    });
+    
+    // Exportação (apenas master)
+    function getDadosExportacao() {
+        return getHistoricoFiltrado().map(c => ({
+            Rua: c.rua,
+            Faixa: c.faixa,
+            Código: c.codigo,
+            Descrição: c.descricao,
+            Embalagem: c.embalagem,
+            Quantidade: c.quantidade,
+            Data: c.data || '',
+            Hora: c.hora || '',
+            Observações: c.observacoes || '',
+            Usuário: c.usuarioNome || ''
+        }));
+    }
+    
+    $('#btnExportCSV').addEventListener('click', () => {
+        if (!isMaster) {
+            Utils.showToast('Acesso restrito ao administrador.', 'error');
+            return;
+        }
+        const dados = getDadosExportacao();
+        if (dados.length === 0) {
+            Utils.showToast('Nenhum dado para exportar.', 'error');
+            return;
+        }
+        const cabecalho = ['Rua', 'Faixa', 'Código', 'Descrição', 'Embalagem', 'Quantidade', 'Data', 'Hora', 'Observações', 'Usuário'];
+        const linhas = [cabecalho.join(';')];
+        dados.forEach(d => {
+            linhas.push(Object.values(d).map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
+        });
+        const csv = '\uFEFF' + linhas.join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        Utils.downloadBlob(blob, `contagem_blmez_${new Date().toISOString().slice(0,10)}.csv`);
+        Utils.showToast('CSV exportado!', 'success');
+    });
+    
+    $('#btnExportExcel').addEventListener('click', () => {
+        if (!isMaster) {
+            Utils.showToast('Acesso restrito ao administrador.', 'error');
+            return;
+        }
+        const dados = getDadosExportacao();
+        if (dados.length === 0) {
+            Utils.showToast('Nenhum dado para exportar.', 'error');
+            return;
+        }
+        if (typeof XLSX === 'undefined') {
+            Utils.showToast('Biblioteca SheetJS não carregada.', 'error');
+            return;
+        }
+        const ws = XLSX.utils.json_to_sheet(dados);
+        ws['!cols'] = [
+            { wch: 8 }, { wch: 8 }, { wch: 20 }, { wch: 40 },
+            { wch: 15 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 25 }, { wch: 20 }
+        ];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Contagens');
+        XLSX.writeFile(wb, `contagem_blmez_${new Date().toISOString().slice(0,10)}.xlsx`);
+        Utils.showToast('Excel exportado!', 'success');
+    });
+    
+    // Filtros
+    [filtroRua, filtroFaixa, filtroCodigo, filtroDescricao].forEach(input => {
+        if (input) input.addEventListener('input', renderizarHistorico);
+    });
+    
+    // Ordenação
+    $$('thead th[data-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+            const col = th.dataset.sort;
+            if (state.sortColumn === col) {
+                state.sortDirection = state.sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.sortColumn = col;
+                state.sortDirection = 'asc';
+            }
+            renderizarHistorico();
+        });
+    });
+    
+    // Atalhos de teclado
+    document.addEventListener('keydown', (e) => {
+        // ESC = limpar formulário ou fechar modais
+        if (e.key === 'Escape') {
+            if (Camera.isOpen) {
+                Camera.close();
+                modalCamera.style.display = 'none';
+            }
+            if (modalDuplicidade.style.display === 'flex') {
+                modalDuplicidade.style.display = 'none';
+            }
+            if (document.activeElement && document.activeElement.closest('#tabContagem')) {
+                limparFormulario();
+            }
+        }
+        
+        // Ctrl+Enter = salvar
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            btnSalvar.click();
+        }
+        
+        // Enter no campo quantidade = salvar
+        if (e.key === 'Enter' && document.activeElement === inputQuantidade) {
+            e.preventDefault();
+            btnSalvar.click();
+        }
+    });
+    
+    // Online/Offline
+    window.addEventListener('online', async () => {
+        Utils.showToast('🌐 Conexão restaurada!', 'success');
+        if (Database.supabase) {
+            await syncPendingContagens();
+            if (state.produtosMapCodAcesso.size === 0) {
+                await carregarProdutosDoSupabase();
+            }
+        }
+    });
+    
+    window.addEventListener('offline', () => {
+        Utils.showToast('📱 Modo offline. Dados salvos localmente.', 'warning');
+    });
+    
+    // ============ INICIAR APLICAÇÃO ============
     init();
+    
 })();
