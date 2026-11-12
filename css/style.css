@@ -565,149 +565,104 @@ tbody tr:hover { background: var(--bg-secondary); }
     to { opacity: 0; transform: translateX(-50%) translateY(20px); }
 }
 
-/* ========== RESPONSIVIDADE ========== */
-
-/* ===== TABLETS E CELULARES GRANDES ===== */
-@media (max-width: 1024px) {
-    .container { padding: 20px 16px; }
-    .card { padding: 20px 16px; }
-}
-
-/* ===== CELULARES EM PAISAGEM E TABLETS PEQUENOS ===== */
+/* ============================================================
+   RESPONSIVIDADE - MOBILE E TABLETS (Ajustado)
+   ============================================================ */
 @media (max-width: 768px) {
-    .container { padding: 10px 8px; gap: 12px; }
-    .card { padding: 16px 12px; border-radius: var(--radius); margin: 0; }
-    .card-header { 
-        font-size: 0.9rem; 
-        margin-bottom: 12px; 
-        padding-bottom: 12px;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-    .card-header .icon {
-        width: 32px; 
-        height: 32px; 
-        font-size: 1rem;
-    }
-    .form-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-    .form-grid .form-group:nth-child(3),
-    .form-grid .form-group:nth-child(4),
-    .form-grid .form-group:nth-child(5),
-    .form-grid .form-group:nth-child(6) { grid-column: span 2; }
+    /* Impede a tela toda de rolar para os lados */
+    body, html { overflow-x: hidden; width: 100%; }
+    
+    .container { padding: 10px 8px; gap: 12px; width: 100%; box-sizing: border-box; }
+    .card { padding: 16px 12px; border-radius: var(--radius); margin: 0; width: 100%; box-sizing: border-box; overflow: hidden; }
+    .card-header { font-size: 0.9rem; margin-bottom: 12px; padding-bottom: 12px; gap: 8px; flex-wrap: wrap; }
+    .card-header .icon { width: 32px; height: 32px; font-size: 1rem; }
+    
     .app-header { padding: 10px 14px; }
     .header-left h1 { font-size: 1rem; }
     .btn { padding: 12px 18px; font-size: 0.9rem; }
     .btn-sm { padding: 6px 10px; font-size: 0.75rem; }
+    
     .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
     .stat-card { padding: 12px 8px; }
     .stat-value { font-size: 1.5rem; }
     .stat-label { font-size: 0.7rem; }
     
-    /* Tabelas com scroll horizontal */
-    .table-wrapper {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        margin: 0 -12px;
-        border-radius: 0;
-        border-left: none;
-        border-right: none;
+    /* TABELAS: Scroll apenas dentro do card, não na tela toda */
+    .table-wrapper { 
+        width: 100%; 
+        overflow-x: auto; 
+        -webkit-overflow-scrolling: touch; 
+        margin: 0; 
+        border-radius: var(--radius-sm); 
+        border: 1px solid var(--border);
     }
     table { min-width: 600px; font-size: 0.78rem; }
     thead th { padding: 8px 6px; font-size: 0.7rem; white-space: nowrap; }
     tbody td { padding: 8px 6px; font-size: 0.75rem; }
     
-    /* Filtros em coluna */
+    /* FILTROS: Empilhados, mas com tamanho controlado */
     .filtros-row { 
         flex-direction: column; 
-        gap: 6px;
+        gap: 8px; 
         align-items: stretch;
     }
     .filtros-row input { 
         max-width: 100%; 
-        flex: 1; 
-        padding: 8px 12px; 
-        font-size: 0.8rem;
         width: 100%;
+        flex: none;
+        padding: 10px 12px; 
+        font-size: 0.85rem; 
+        box-sizing: border-box;
     }
     
     .login-card { padding: 32px 24px; }
     .sidebar { width: 260px; }
     
-    .btn-row { flex-wrap: wrap; gap: 6px; }
-
-    /* ===== AJUSTES ESPECÍFICOS PARA HISTÓRICO, DASHBOARD E USUÁRIOS ===== */
-    /* Histórico - título e botões */
-    #secaoHistorico .card-header {
-        font-size: 0.95rem;
-        padding-bottom: 10px;
-    }
+    /* HISTÓRICO: Botões CSV/Excel alinhados e normais */
     #secaoHistorico .btn-row {
+        display: flex;
         flex-direction: row;
+        flex-wrap: nowrap;
         gap: 8px;
-        justify-content: flex-start;
         margin-bottom: 12px;
     }
-    #secaoHistorico .btn-row .btn-sm {
-        flex: 0 1 auto;
-        min-width: 80px;
-        font-size: 0.7rem;
-        padding: 6px 12px;
-    }
-
-    /* Dashboard - título e cards */
-    #secaoDashboard .card-header {
-        font-size: 0.95rem;
-        padding-bottom: 10px;
-    }
-    #secaoDashboard .stats-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-    }
-    #secaoDashboard .stat-card {
-        padding: 12px 8px;
-    }
-    #secaoDashboard .stat-value {
-        font-size: 1.3rem;
-    }
-
-    /* Usuários - título e formulário */
-    #secaoUsuarios .card-header {
-        font-size: 0.95rem;
-        padding-bottom: 10px;
-    }
-    #secaoUsuarios .form-grid {
-        grid-template-columns: 1fr;
-        gap: 10px;
-    }
-    #secaoUsuarios .form-grid .form-group {
-        grid-column: span 1;
-    }
-    #secaoUsuarios .btn-sm {
-        width: 100%;
+    #secaoHistorico .btn-row .btn-sm { 
+        flex: 1;
+        font-size: 0.75rem; 
+        padding: 8px 10px;
         justify-content: center;
-        padding: 10px;
     }
+
+    /* DASHBOARD */
+    #secaoDashboard .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    #secaoDashboard .stat-card { padding: 12px 8px; }
+    #secaoDashboard .stat-value { font-size: 1.3rem; }
+
+    /* USUÁRIOS */
+    #secaoUsuarios .form-grid { grid-template-columns: 1fr; gap: 10px; }
+    #secaoUsuarios .btn-sm { width: 100%; justify-content: center; padding: 12px; }
+
+    /* CONTAGEM */
+    #secaoContagem .form-grid { grid-template-columns: 1fr 2fr; gap: 10px; }
+    #secaoContagem .form-group:has(#rua) { grid-column: 1; grid-row: 1; }
+    #secaoContagem .form-group:has(#codigo) { grid-column: 2; grid-row: 1; }
+    #secaoContagem #rua,
+    #secaoContagem #codigo,
+    #secaoContagem .input-with-btn,
+    #secaoContagem .input-with-btn input,
+    #secaoContagem .btn-camera { height: 44px; }
+    #secaoContagem .form-group:has(#descricao) { grid-column: 1 / -1; width: 100% !important; }
+    #secaoContagem #descricao { width: 100% !important; min-width: 100% !important; height: 48px !important; font-size: 1rem !important; padding: 12px 16px !important; }
+    #secaoContagem .form-group:has(#embalagem) { grid-column: 1 / 2 !important; }
+    #secaoContagem .form-group:has(#quantidade) { grid-column: 2 / 3 !important; }
+    #secaoContagem .form-group:has(#observacoes) { grid-column: 1 / -1 !important; }
 }
 
-/* ===== CELULARES PEQUENOS ===== */
 @media (max-width: 480px) {
     .container { padding: 6px 4px; gap: 10px; }
     .card { padding: 12px 8px; }
-    .card-header { 
-        font-size: 0.85rem; 
-        padding-bottom: 10px;
-        gap: 6px;
-    }
-    .card-header .icon {
-        width: 28px;
-        height: 28px;
-        font-size: 0.85rem;
-    }
-    .form-grid { grid-template-columns: 1fr; }
-    .form-grid .form-group:nth-child(3),
-    .form-grid .form-group:nth-child(4),
-    .form-grid .form-group:nth-child(5),
-    .form-grid .form-group:nth-child(6) { grid-column: span 1; }
+    .card-header { font-size: 0.85rem; padding-bottom: 10px; gap: 6px; }
+    
     .stats-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
     .stat-value { font-size: 1.3rem; }
     .stat-card { padding: 10px 6px; }
@@ -717,190 +672,36 @@ tbody tr:hover { background: var(--bg-secondary); }
     tbody td { padding: 6px 4px; font-size: 0.7rem; }
     .btn-sm { padding: 5px 8px; font-size: 0.7rem; }
 
-    /* ===== AJUSTES ESPECÍFICOS PARA TELAS MUITO PEQUENAS ===== */
-    /* Histórico - botões de exportação empilhados */
-    #secaoHistorico .btn-row {
-        flex-direction: column;
-        gap: 4px;
-        align-items: stretch;
-    }
-    #secaoHistorico .btn-row .btn-sm {
-        flex: 1;
-        width: 100%;
-        justify-content: center;
-        font-size: 0.7rem;
-        padding: 8px;
-    }
-    #secaoHistorico .filtros-row input {
-        font-size: 0.75rem;
-        padding: 6px 10px;
-    }
-
-    /* Dashboard - cards em 1 coluna ou 2 colunas menores */
-    #secaoDashboard .stats-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 4px;
-    }
-    #secaoDashboard .stat-card {
-        padding: 8px 4px;
-    }
-    #secaoDashboard .stat-value {
-        font-size: 1.1rem;
-    }
-    #secaoDashboard .stat-label {
-        font-size: 0.6rem;
-        letter-spacing: 0.5px;
-    }
-
-    /* Usuários - botão ocupa largura total */
-    #secaoUsuarios .btn-sm {
-        width: 100%;
-        justify-content: center;
-        font-size: 0.8rem;
-        padding: 10px 14px;
-    }
-    #secaoUsuarios .form-grid .form-group {
-        margin-bottom: 8px;
-    }
-    #secaoUsuarios .form-grid .form-group label {
-        font-size: 0.7rem;
-    }
+    #secaoDashboard .stat-value { font-size: 1.1rem; }
+    #secaoDashboard .stat-label { font-size: 0.6rem; letter-spacing: 0.5px; }
+    
+    #secaoUsuarios .btn-sm { font-size: 0.8rem; padding: 10px 14px; }
+    #secaoUsuarios .form-grid .form-group label { font-size: 0.7rem; }
     #secaoUsuarios .form-grid .form-group input,
-    #secaoUsuarios .form-grid .form-group select {
-        font-size: 0.85rem;
-        padding: 8px 10px;
-    }
+    #secaoUsuarios .form-grid .form-group select { font-size: 0.85rem; padding: 8px 10px; }
 
-    /* ===== AJUSTE FORMULÁRIO CONTAGEM EM TELAS PEQUENAS ===== */
-    #secaoContagem .form-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-    }
-    
-    #secaoContagem .form-group:has(#descricao),
-    #secaoContagem .form-group:has(#observacoes) {
-        grid-column: 1 / -1;
-    }
-    
-    #secaoContagem .form-group:has(#embalagem) {
-        grid-column: 1 / 2;
-    }
-    
-    #secaoContagem .form-group:has(#quantidade) {
-        grid-column: 2 / 3;
-    }
-    
-    #secaoContagem #descricao {
-        height: 40px;
-        font-size: 0.95rem;
-    }
+    #secaoContagem .form-grid { grid-template-columns: 1fr 2fr; gap: 8px; }
+    #secaoContagem #rua,
+    #secaoContagem #codigo,
+    #secaoContagem .input-with-btn,
+    #secaoContagem .input-with-btn input,
+    #secaoContagem .btn-camera { height: 40px; }
+    #secaoContagem #descricao { height: 44px !important; font-size: 0.9rem !important; padding: 10px 14px !important; }
 }
 
-/* ===== EXTRA - Ajustes para telas muito estreitas (até 360px) ===== */
 @media (max-width: 360px) {
     .header-left h1 { font-size: 0.85rem; }
     .logo { width: 32px; height: 32px; font-size: 16px; }
     .hamburger-btn { width: 34px; height: 34px; font-size: 1rem; }
     .user-badge { font-size: 0.7rem; padding: 4px 8px; }
     
-    #secaoDashboard .stats-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 4px;
-    }
-    #secaoDashboard .stat-value {
-        font-size: 0.95rem;
-    }
-    #secaoDashboard .stat-label {
-        font-size: 0.55rem;
-    }
-    
-    #secaoHistorico .card-header,
-    #secaoDashboard .card-header,
-    #secaoUsuarios .card-header {
-        font-size: 0.75rem;
-        padding-bottom: 8px;
-    }
-    #secaoHistorico .card-header .icon,
-    #secaoDashboard .card-header .icon,
-    #secaoUsuarios .card-header .icon {
-        width: 24px;
-        height: 24px;
-        font-size: 0.7rem;
-    }
     table { min-width: 400px; font-size: 0.65rem; }
     thead th { padding: 4px 3px; font-size: 0.6rem; }
     tbody td { padding: 4px 3px; font-size: 0.62rem; }
 
-    /* Formulário contagem em telas muito pequenas */
-    #secaoContagem .form-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 6px;
-    }
-    
-    #secaoContagem .form-group:has(#descricao),
-    #secaoContagem .form-group:has(#observacoes) {
-        grid-column: 1 / -1;
-    }
-    
-    #secaoContagem .form-group:has(#embalagem) {
-        grid-column: 1 / 2;
-    }
-    
-    #secaoContagem .form-group:has(#quantidade) {
-        grid-column: 2 / 3;
-    }
-    
-    #secaoContagem #descricao {
-        height: 36px;
-        font-size: 0.85rem;
-    }
-    
-    #secaoContagem .form-group label {
-        font-size: 0.65rem;
-    }
-    
+    #secaoContagem .form-grid { grid-template-columns: 1fr 2fr; gap: 6px; }
+    #secaoContagem #descricao { height: 40px !important; font-size: 0.85rem !important; }
+    #secaoContagem .form-group label { font-size: 0.65rem; }
     #secaoContagem .form-group input,
-    #secaoContagem .form-group select {
-        font-size: 0.8rem;
-        padding: 6px 8px;
-    }
-}
-
-/* ===== AJUSTE ESPECÍFICO PARA DESCRIÇÃO NO CELULAR ===== */
-@media (max-width: 768px) {
-    /* Deixa a descrição ocupando a largura total com um campo maior */
-    #secaoContagem .form-group:has(#descricao) {
-        grid-column: 1 / -1 !important;
-        width: 100% !important;
-    }
-    
-    #secaoContagem #descricao {
-        width: 100% !important;
-        min-width: 100% !important;
-        height: 48px !important;
-        font-size: 1rem !important;
-        padding: 12px 16px !important;
-    }
-    
-    /* Garante que os outros campos fiquem lado a lado */
-    #secaoContagem .form-group:has(#embalagem) {
-        grid-column: 1 / 2 !important;
-    }
-    
-    #secaoContagem .form-group:has(#quantidade) {
-        grid-column: 2 / 3 !important;
-    }
-    
-    #secaoContagem .form-group:has(#observacoes) {
-        grid-column: 1 / -1 !important;
-    }
-}
-
-/* Ajuste para telas muito pequenas */
-@media (max-width: 480px) {
-    #secaoContagem #descricao {
-        height: 44px !important;
-        font-size: 0.9rem !important;
-        padding: 10px 14px !important;
-    }
+    #secaoContagem .form-group select { font-size: 0.8rem; padding: 6px 8px; }
 }
